@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: karaoke-subtitle-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    buildCommand: ""
+    startCommand: "python main.py"
+    envVars:
+      - key: PORT
+        value: 8000
+    healthCheckPath: /health
