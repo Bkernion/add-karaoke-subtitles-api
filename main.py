@@ -85,6 +85,7 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
 @app.get("/")
+@app.head("/")
 async def root():
     return {
         "service": "Karaoke Subtitle API", 
@@ -97,6 +98,7 @@ async def root():
     }
 
 @app.get("/health")
+@app.head("/health")
 async def health_check():
     return {"status": "healthy", "service": "Karaoke Subtitle API"}
 
