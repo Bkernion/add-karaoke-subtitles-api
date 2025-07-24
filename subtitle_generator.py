@@ -95,14 +95,22 @@ class KaraokeSubtitleGenerator:
         if hex_color.startswith('#'):
             hex_color = hex_color[1:]
         
-        if len(hex_color) != 6:
+        # Ensure valid 6-character hex
+        if len(hex_color) != 6 or not all(c in '0123456789ABCDEFabcdef' for c in hex_color):
             hex_color = "FFFFFF"  # Default to white
         
         # ASS uses BGR format, so reverse RGB
         r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
-        return f"&H00{b.upper()}{g.upper()}{r.upper()}"
+        
+        # Convert to integers and back to ensure proper format
+        r_int = int(r, 16)
+        g_int = int(g, 16)  
+        b_int = int(b, 16)
+        
+        return f"&H00{b_int:02X}{g_int:02X}{r_int:02X}"
     
-    def _create_ass_styles(self, font_name: str = "Arial Rounded MT Bold", 
+    def _create_ass_styles(self, font_name: str = "Arial Rounded MT Bold",
+                          font_size: int = 24,
                           font_color: str = "#FFFFFF", 
                           highlight_color: str = "#FFFF00") -> str:
         primary_color = self._hex_to_ass_color(font_color)
@@ -110,14 +118,21 @@ class KaraokeSubtitleGenerator:
         
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},24,{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
+Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
     
     def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path, 
                          font_name: str = "Arial Rounded MT Bold",
+                         font_size: int = 24,
                          font_color: str = "#FFFFFF",
                          highlight_color: str = "#FFFF00") -> None:
         
-        styles = self._create_ass_styles(font_name, font_color, highlight_color)
+        styles = self._create_ass_styles(font_name, font_size, font_color, highlight_color)
+        
+        # Debug: Print style info
+        print(f"🎨 Generating subtitles with:")
+        print(f"   Font: {font_name}, Size: {font_size}")
+        print(f"   Text Color: {font_color} -> {self._hex_to_ass_color(font_color)}")
+        print(f"   Highlight Color: {highlight_color} -> {self._hex_to_ass_color(highlight_color)}")
         
         ass_content = f"""[Script Info]
 Title: Karaoke Subtitles

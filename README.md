@@ -21,6 +21,7 @@ A FastAPI backend that generates karaoke-style subtitles for videos using OpenAI
 {
   "video_url": "https://example.com/input.mp4",
   "font_name": "Arial Rounded MT Bold",
+  "font_size": 24,
   "font_color": "#FFFFFF",
   "highlight_color": "#FFFF00"
 }
@@ -29,6 +30,7 @@ A FastAPI backend that generates karaoke-style subtitles for videos using OpenAI
 **Parameters:**
 - `video_url` (required): URL of the video to process
 - `font_name` (optional): Font family name (default: "Arial Rounded MT Bold")
+- `font_size` (optional): Font size in points (default: 24)
 - `font_color` (optional): Hex color for subtitle text (default: "#FFFFFF" - white)
 - `highlight_color` (optional): Hex color for karaoke highlights (default: "#FFFF00" - yellow)
 
@@ -121,6 +123,7 @@ curl -X POST "http://localhost:8000/generate-karaoke-subtitles" \
   -d '{
     "video_url": "https://example.com/video.mp4",
     "font_name": "Impact",
+    "font_size": 32,
     "font_color": "#FF0000",
     "highlight_color": "#00FF00"
   }'
