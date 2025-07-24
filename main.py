@@ -52,6 +52,8 @@ async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
             
             await video_processor.download_video(str(request.video_url), input_video_path)
             
+            video_info = video_processor.get_video_info(input_video_path)
+            
             video_processor.extract_audio(input_video_path, audio_path)
             
             transcription = subtitle_generator.transcribe_with_timing(audio_path)
@@ -62,7 +64,9 @@ async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
                 font_name=request.font_name,
                 font_size=request.font_size,
                 font_color=request.font_color,
-                highlight_color=request.highlight_color
+                highlight_color=request.highlight_color,
+                video_width=video_info['width'],
+                video_height=video_info['height']
             )
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)

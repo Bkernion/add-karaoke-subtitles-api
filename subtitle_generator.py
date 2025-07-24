@@ -109,6 +109,45 @@ class KaraokeSubtitleGenerator:
         
         return f"&H00{b_int:02X}{g_int:02X}{r_int:02X}"
     
+    def _wrap_text_for_video(self, words_with_timing: List[Dict], max_chars_per_line: int, max_words_per_line: int) -> List[Dict]:
+        """Smart text wrapping based on video orientation"""
+        wrapped_segments = []
+        current_line_words = []
+        current_line_chars = 0
+        
+        for word_info in words_with_timing:
+            word = word_info["word"].strip()
+            word_length = len(word) + 1  # +1 for space
+            
+            # Check if adding this word would exceed limits
+            if (current_line_chars + word_length > max_chars_per_line or 
+                len(current_line_words) >= max_words_per_line) and current_line_words:
+                
+                # Finalize current line
+                wrapped_segments.append({
+                    "words": current_line_words.copy(),
+                    "start": current_line_words[0]["start"],
+                    "end": current_line_words[-1]["end"]
+                })
+                
+                # Start new line
+                current_line_words = [word_info]
+                current_line_chars = word_length
+            else:
+                # Add to current line
+                current_line_words.append(word_info)
+                current_line_chars += word_length
+        
+        # Add final line if it has words
+        if current_line_words:
+            wrapped_segments.append({
+                "words": current_line_words,
+                "start": current_line_words[0]["start"],
+                "end": current_line_words[-1]["end"]
+            })
+        
+        return wrapped_segments
+    
     def _create_ass_styles(self, font_name: str = "Arial Rounded MT Bold",
                           font_size: int = 24,
                           font_color: str = "#FFFFFF", 
@@ -124,15 +163,33 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                          font_name: str = "Arial Rounded MT Bold",
                          font_size: int = 24,
                          font_color: str = "#FFFFFF",
-                         highlight_color: str = "#FFFF00") -> None:
+                         highlight_color: str = "#FFFF00",
+                         video_width: int = 1920,
+                         video_height: int = 1080) -> None:
         
         styles = self._create_ass_styles(font_name, font_size, font_color, highlight_color)
         
-        # Debug: Print style info
+        # Determine video orientation and wrapping strategy
+        is_vertical = video_width <= 1080  # Vertical/square videos
+        is_horizontal = video_width >= 1920  # Horizontal videos
+        
+        if is_vertical:
+            max_chars_per_line = 15  # Shorter lines for vertical videos
+            max_words_per_line = 3
+        elif is_horizontal:
+            max_chars_per_line = 40  # Longer lines for horizontal videos  
+            max_words_per_line = 8
+        else:
+            max_chars_per_line = 25  # Medium lines for in-between sizes
+            max_words_per_line = 5
+        
+        # Debug: Print style and layout info
         print(f"🎨 Generating subtitles with:")
+        print(f"   Video: {video_width}x{video_height} ({'Vertical' if is_vertical else 'Horizontal' if is_horizontal else 'Medium'})")
         print(f"   Font: {font_name}, Size: {font_size}")
         print(f"   Text Color: {font_color} -> {self._hex_to_ass_color(font_color)}")
         print(f"   Highlight Color: {highlight_color} -> {self._hex_to_ass_color(highlight_color)}")
+        print(f"   Max chars per line: {max_chars_per_line}, Max words per line: {max_words_per_line}")
         
         ass_content = f"""[Script Info]
 Title: Karaoke Subtitles
@@ -147,40 +204,40 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         for segment in transcription["segments"]:
             if "words" not in segment:
                 continue
-                
-            segment_start = segment["start"]
-            segment_end = segment["end"]
             
-            karaoke_text = ""
-            current_time = segment_start
+            # Apply adaptive text wrapping based on video orientation
+            wrapped_lines = self._wrap_text_for_video(segment["words"], max_chars_per_line, max_words_per_line)
             
-            for word_info in segment["words"]:
-                word = word_info["word"].strip()
-                word_start = word_info["start"]
-                word_end = word_info["end"]
+            for line_info in wrapped_lines:
+                karaoke_text = ""
                 
-                if not word:
-                    continue
+                for word_info in line_info["words"]:
+                    word = word_info["word"].strip()
+                    word_start = word_info["start"]
+                    word_end = word_info["end"]
+                    
+                    if not word:
+                        continue
+                    
+                    syllables = self._split_into_syllables(word)
+                    
+                    if len(syllables) == 1:
+                        duration_cs = int((word_end - word_start) * 100)
+                        karaoke_text += f"{{\\k{duration_cs}}}{word}"
+                    else:
+                        syllable_duration = (word_end - word_start) / len(syllables)
+                        for syllable in syllables:
+                            duration_cs = int(syllable_duration * 100)
+                            karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
+                    
+                    karaoke_text += " "
                 
-                syllables = self._split_into_syllables(word)
+                karaoke_text = karaoke_text.strip()
                 
-                if len(syllables) == 1:
-                    duration_cs = int((word_end - word_start) * 100)
-                    karaoke_text += f"{{\\k{duration_cs}}}{word}"
-                else:
-                    syllable_duration = (word_end - word_start) / len(syllables)
-                    for syllable in syllables:
-                        duration_cs = int(syllable_duration * 100)
-                        karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
+                start_time = self._format_timestamp(line_info["start"])
+                end_time = self._format_timestamp(line_info["end"])
                 
-                karaoke_text += " "
-            
-            karaoke_text = karaoke_text.strip()
-            
-            start_time = self._format_timestamp(segment_start)
-            end_time = self._format_timestamp(segment_end)
-            
-            ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{karaoke_text}\n"
+                ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{karaoke_text}\n"
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(ass_content)

@@ -101,8 +101,12 @@ docker run -p 8000:8000 karaoke-subtitle-api
 
 - **Karaoke Timing**: Uses `\k` tags for syllable-by-syllable highlighting
 - **Styling**: Bold white text with colored highlights during active syllables
-- **Font**: Arial Rounded MT Bold or system fallback
+- **Font**: Customizable font family, size, and colors
 - **Background**: Semi-transparent black box for readability
+- **Smart Text Wrapping**: Automatically adapts to video orientation:
+  - **Vertical videos (≤1080px width)**: Short lines (3 words, 15 chars max)
+  - **Horizontal videos (≥1920px width)**: Long lines (8 words, 40 chars max)  
+  - **Medium videos**: Balanced lines (5 words, 25 chars max)
 - **Format**: Advanced SubStation Alpha (.ass) for maximum compatibility
 
 ## API Examples
