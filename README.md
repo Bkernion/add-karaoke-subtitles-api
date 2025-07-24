@@ -178,6 +178,33 @@ The API includes comprehensive error handling for:
 - Generates unique IDs for concurrent requests
 - Optimized FFmpeg settings for quality and speed
 
+## 🚀 **Fonts Available on Production (Render/Docker):**
+
+When deployed on Render or Docker (Ubuntu Linux), these fonts are guaranteed to work:
+
+### **✅ Production-Ready Fonts:**
+- `Liberation Sans` - Excellent Arial alternative
+- `Liberation Sans Bold` - Bold version for impact
+- `DejaVu Sans` - Clean, modern (multiple weights)
+- `DejaVu Sans Bold` - Bold version
+- `Noto Sans` - Google's universal font family
+- `FreeSans` - GNU font, Arial-like
+- `Liberation Serif` - Times New Roman alternative
+- `DejaVu Serif` - Readable serif font
+
+### **🎯 Best for Karaoke on Production:**
+```json
+{
+  "font_name": "Liberation Sans Bold",    // Best Arial alternative
+  "font_name": "DejaVu Sans Bold",       // Clean and bold  
+  "font_name": "Noto Sans",              // Universal coverage
+  "font_name": "FreeSans"                // Simple and readable
+}
+```
+
+### **💡 Font Fallback:**
+If your specified font isn't found, the system falls back to `Liberation Sans` → `DejaVu Sans` → system default.
+
 ## Troubleshooting
 
 ### Common Issues

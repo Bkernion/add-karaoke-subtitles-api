@@ -6,6 +6,14 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
     wget \
+    fonts-liberation \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
+    fonts-noto-core \
+    fonts-opensymbol \
+    fonts-freefont-ttf \
+    fontconfig \
+    && fc-cache -f -v \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
