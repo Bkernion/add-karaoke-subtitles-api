@@ -38,7 +38,7 @@ A FastAPI backend that generates karaoke-style subtitles for videos using OpenAI
 ```json
 {
   "status": "success",
-  "download_url": "/public/abc123_final.mp4",
+  "download_url": "https://your-api-domain.com/public/abc123_final.mp4",
   "message": "Karaoke subtitles generated successfully"
 }
 ```

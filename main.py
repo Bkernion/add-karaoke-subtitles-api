@@ -8,7 +8,7 @@ import aiofiles
 import requests
 import whisper
 import ffmpeg
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 from slugify import slugify
@@ -35,7 +35,7 @@ class VideoResponse(BaseModel):
     message: str = ""
 
 @app.post("/generate-karaoke-subtitles", response_model=VideoResponse)
-async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
+async def generate_karaoke_subtitles(video_request: VideoRequest, request: Request) -> VideoResponse:
     try:
         unique_id = str(uuid.uuid4())[:8]
         
@@ -50,7 +50,7 @@ async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
             subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
-            await video_processor.download_video(str(request.video_url), input_video_path)
+            await video_processor.download_video(str(video_request.video_url), input_video_path)
             
             video_info = video_processor.get_video_info(input_video_path)
             
@@ -61,17 +61,19 @@ async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
             subtitle_generator.generate_ass_file(
                 transcription, 
                 subtitle_path,
-                font_name=request.font_name,
-                font_size=request.font_size,
-                font_color=request.font_color,
-                highlight_color=request.highlight_color,
+                font_name=video_request.font_name,
+                font_size=video_request.font_size,
+                font_color=video_request.font_color,
+                highlight_color=video_request.highlight_color,
                 video_width=video_info['width'],
                 video_height=video_info['height']
             )
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
             
-            download_url = f"/public/{unique_id}_final.mp4"
+            # Construct full URL
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
+            download_url = f"{base_url}/public/{unique_id}_final.mp4"
             
             return VideoResponse(
                 status="success",
