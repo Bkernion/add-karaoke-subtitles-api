@@ -18,6 +18,8 @@ from video_processor import VideoProcessor
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
+# Model will be loaded on first request to avoid startup timeout
+
 PUBLIC_DIR = Path("public")
 PUBLIC_DIR.mkdir(exist_ok=True)
 app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
@@ -101,6 +103,10 @@ async def root():
 @app.head("/health")
 async def health_check():
     return {"status": "healthy", "service": "Karaoke Subtitle API"}
+
+@app.get("/test")
+async def test_endpoint():
+    return {"message": "Test endpoint working", "timestamp": "2025-01-24"}
 
 if __name__ == "__main__":
     import uvicorn
