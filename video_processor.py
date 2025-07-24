@@ -36,16 +36,24 @@ class VideoProcessor:
         try:
             input_video = ffmpeg.input(str(video_path))
             
+            # High-quality settings optimized for compatibility
             output = ffmpeg.output(
                 input_video,
                 str(output_path),
                 vf=f"ass={subtitle_path}",
-                vcodec='libx264',
-                acodec='aac',
-                crf=23,
-                preset='medium'
+                vcodec='libx264',          # H.264 codec
+                acodec='aac',              # AAC audio codec
+                crf=18,                    # High quality (lower = better, 18 is near-lossless)
+                preset='slow',             # Better compression (slower = higher quality)
+                profile='high',            # H.264 high profile
+                pix_fmt='yuv420p',        # Standard pixel format for compatibility
+                movflags='+faststart',    # Optimize for web streaming
+                **{'b:a': '320k'},        # High-quality audio bitrate
+                ar=48000,                 # High audio sample rate
+                ac=2,                     # Stereo audio
             )
             
+            print(f"🎬 Encoding with high-quality settings (CRF=18, preset=slow, 320k audio)")
             ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
             
         except ffmpeg.Error as e:

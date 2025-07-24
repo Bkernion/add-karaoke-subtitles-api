@@ -159,8 +159,12 @@ print(f"Download URL: {result['download_url']}")
 3. 🗣️ Transcribe with Whisper (word-level timing)
 4. ✂️ Split words into syllables
 5. 📝 Generate .ass file with karaoke timing
-6. 🔥 Burn subtitles into video
-7. 📤 Return download URL
+6. 🎬 Burn subtitles with **high-quality encoding**:
+   - CRF=18 (near-lossless quality)
+   - H.264 slow preset (best compression)
+   - 320k audio bitrate
+   - Professional encoding settings
+7. 📤 Return full download URL
 
 ## Error Handling
 
