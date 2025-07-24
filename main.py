@@ -92,7 +92,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     print(f"🚀 Starting Karaoke Subtitle API on port {port}")
-    print(f"📋 Health check: http://localhost:{port}/health")
-    print(f"📖 API docs: http://localhost:{port}/docs")
+    print(f"📋 Health check: http://0.0.0.0:{port}/health")
+    print(f"📖 API docs: http://0.0.0.0:{port}/docs")
     print("✋ Press Ctrl+C to stop the server")
-    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
