@@ -90,7 +90,7 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 10000))  # Changed default to 10000 for Render
     print(f"🚀 Starting Karaoke Subtitle API on port {port}")
     print(f"📋 Health check: http://0.0.0.0:{port}/health")
     print(f"📖 API docs: http://0.0.0.0:{port}/docs")

@@ -23,6 +23,6 @@ COPY . .
 
 RUN mkdir -p public
 
-EXPOSE 8000
+EXPOSE 10000
 
 CMD ["python", "main.py"]
