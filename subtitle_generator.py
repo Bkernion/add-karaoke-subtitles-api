@@ -90,20 +90,40 @@ class KaraokeSubtitleGenerator:
         secs = seconds % 60
         return f"{hours}:{minutes:02d}:{secs:05.2f}"
     
-    def _create_ass_styles(self) -> str:
-        return """[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Rounded MT Bold,24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
-Style: Karaoke,Arial Rounded MT Bold,24,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
+    def _hex_to_ass_color(self, hex_color: str) -> str:
+        """Convert hex color (#RRGGBB) to ASS color format (&H00BBGGRR)"""
+        if hex_color.startswith('#'):
+            hex_color = hex_color[1:]
+        
+        if len(hex_color) != 6:
+            hex_color = "FFFFFF"  # Default to white
+        
+        # ASS uses BGR format, so reverse RGB
+        r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+        return f"&H00{b.upper()}{g.upper()}{r.upper()}"
     
-    def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path) -> None:
-        ass_content = """[Script Info]
+    def _create_ass_styles(self, font_name: str = "Arial Rounded MT Bold", 
+                          font_color: str = "#FFFFFF", 
+                          highlight_color: str = "#FFFF00") -> str:
+        primary_color = self._hex_to_ass_color(font_color)
+        secondary_color = self._hex_to_ass_color(highlight_color)
+        
+        return f"""[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},24,{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
+    
+    def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path, 
+                         font_name: str = "Arial Rounded MT Bold",
+                         font_color: str = "#FFFFFF",
+                         highlight_color: str = "#FFFF00") -> None:
+        
+        styles = self._create_ass_styles(font_name, font_color, highlight_color)
+        
+        ass_content = f"""[Script Info]
 Title: Karaoke Subtitles
 ScriptType: v4.00+
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Rounded MT Bold,24,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+{styles}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -19,9 +19,18 @@ A FastAPI backend that generates karaoke-style subtitles for videos using OpenAI
 
 ```json
 {
-  "video_url": "https://example.com/input.mp4"
+  "video_url": "https://example.com/input.mp4",
+  "font_name": "Arial Rounded MT Bold",
+  "font_color": "#FFFFFF",
+  "highlight_color": "#FFFF00"
 }
 ```
+
+**Parameters:**
+- `video_url` (required): URL of the video to process
+- `font_name` (optional): Font family name (default: "Arial Rounded MT Bold")
+- `font_color` (optional): Hex color for subtitle text (default: "#FFFFFF" - white)
+- `highlight_color` (optional): Hex color for karaoke highlights (default: "#FFFF00" - yellow)
 
 **Response:**
 ```json
@@ -96,12 +105,25 @@ docker run -p 8000:8000 karaoke-subtitle-api
 
 ## API Examples
 
-### Using curl:
+### Using curl (basic):
 
 ```bash
 curl -X POST "http://localhost:8000/generate-karaoke-subtitles" \
   -H "Content-Type: application/json" \
   -d '{"video_url": "https://example.com/video.mp4"}'
+```
+
+### Using curl (with custom font and colors):
+
+```bash
+curl -X POST "http://localhost:8000/generate-karaoke-subtitles" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "https://example.com/video.mp4",
+    "font_name": "Impact",
+    "font_color": "#FF0000",
+    "highlight_color": "#00FF00"
+  }'
 ```
 
 ### Using Python requests:
@@ -111,7 +133,12 @@ import requests
 
 response = requests.post(
     "http://localhost:8000/generate-karaoke-subtitles",
-    json={"video_url": "https://example.com/video.mp4"}
+    json={
+        "video_url": "https://example.com/video.mp4",
+        "font_name": "Helvetica",
+        "font_color": "#FFFFFF",
+        "highlight_color": "#FF6B35"
+    }
 )
 
 result = response.json()

@@ -24,6 +24,9 @@ app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
 class VideoRequest(BaseModel):
     video_url: HttpUrl
+    font_name: str = "Arial Rounded MT Bold"
+    font_color: str = "#FFFFFF"  # White by default
+    highlight_color: str = "#FFFF00"  # Yellow by default
 
 class VideoResponse(BaseModel):
     status: str
@@ -52,7 +55,13 @@ async def generate_karaoke_subtitles(request: VideoRequest) -> VideoResponse:
             
             transcription = subtitle_generator.transcribe_with_timing(audio_path)
             
-            subtitle_generator.generate_ass_file(transcription, subtitle_path)
+            subtitle_generator.generate_ass_file(
+                transcription, 
+                subtitle_path,
+                font_name=request.font_name,
+                font_color=request.font_color,
+                highlight_color=request.highlight_color
+            )
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
             
