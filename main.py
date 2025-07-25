@@ -10,7 +10,7 @@ import whisper
 import ffmpeg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, HttpUrl
 from slugify import slugify
 
@@ -94,10 +94,18 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             # Debug the response
             print(f"📋 Response data: {response_data}")
             
-            return JSONResponse(
-                content=response_data,
+            # Use standard Response to ensure cleanest JSON
+            import json
+            json_string = json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
+            
+            return Response(
+                content=json_string,
                 media_type="application/json",
-                headers={"Content-Type": "application/json; charset=utf-8"}
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Allow-Origin": "*"
+                }
             )
             
     except Exception as e:
@@ -124,6 +132,57 @@ async def health_check():
 @app.get("/test")
 async def test_endpoint():
     return {"message": "Test endpoint working", "timestamp": "2025-01-24"}
+
+@app.post("/generate-karaoke-subtitles-simple")
+async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request: Request):
+    """Alternative endpoint that returns just the URL as plain text"""
+    try:
+        unique_id = str(uuid.uuid4())[:8]
+        
+        video_processor = VideoProcessor()
+        subtitle_generator = KaraokeSubtitleGenerator()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            input_video_path = temp_path / f"{unique_id}_input.mp4"
+            audio_path = temp_path / f"{unique_id}_audio.wav"
+            subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
+            output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
+            
+            await video_processor.download_video(str(video_request.video_url), input_video_path)
+            
+            video_info = video_processor.get_video_info(input_video_path)
+            
+            video_processor.extract_audio(input_video_path, audio_path)
+            
+            transcription = subtitle_generator.transcribe_with_timing(audio_path)
+            
+            subtitle_generator.generate_ass_file(
+                transcription, 
+                subtitle_path,
+                font_name=video_request.font_name,
+                font_size=video_request.font_size,
+                font_color=video_request.font_color,
+                highlight_color=video_request.highlight_color,
+                video_width=video_info['width'],
+                video_height=video_info['height']
+            )
+            
+            video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
+            
+            # Return just the URL as plain text
+            if "onrender.com" in str(request.url.netloc):
+                base_url = f"https://{request.url.netloc}"
+            else:
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
+            
+            download_url = f"{base_url}/public/{unique_id}_final.mp4"
+            
+            return Response(content=download_url, media_type="text/plain")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
