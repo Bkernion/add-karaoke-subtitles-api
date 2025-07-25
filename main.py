@@ -74,15 +74,31 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
             
-            # Construct full URL
-            base_url = f"{request.url.scheme}://{request.url.netloc}"
-            download_url = str(f"{base_url}/public/{unique_id}_final.mp4")
+            # Construct full URL - force HTTPS for production
+            if "onrender.com" in str(request.url.netloc):
+                base_url = f"https://{request.url.netloc}"
+            else:
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
             
-            return JSONResponse(content={
+            download_url = f"{base_url}/public/{unique_id}_final.mp4"
+            
+            # Debug logging
+            print(f"🔗 Generated download URL: {download_url}")
+            
+            response_data = {
                 "status": "success",
                 "download_url": download_url,
                 "message": "Karaoke subtitles generated successfully"
-            })
+            }
+            
+            # Debug the response
+            print(f"📋 Response data: {response_data}")
+            
+            return JSONResponse(
+                content=response_data,
+                media_type="application/json",
+                headers={"Content-Type": "application/json; charset=utf-8"}
+            )
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
