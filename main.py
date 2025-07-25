@@ -10,6 +10,7 @@ import whisper
 import ffmpeg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, HttpUrl
 from slugify import slugify
 
@@ -75,13 +76,13 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             
             # Construct full URL
             base_url = f"{request.url.scheme}://{request.url.netloc}"
-            download_url = f"{base_url}/public/{unique_id}_final.mp4"
+            download_url = str(f"{base_url}/public/{unique_id}_final.mp4")
             
-            return VideoResponse(
-                status="success",
-                download_url=download_url,
-                message="Karaoke subtitles generated successfully"
-            )
+            return JSONResponse(content={
+                "status": "success",
+                "download_url": download_url,
+                "message": "Karaoke subtitles generated successfully"
+            })
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
