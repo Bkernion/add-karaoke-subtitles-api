@@ -5,8 +5,8 @@ from typing import List, Dict, Any
 import math
 
 class KaraokeSubtitleGenerator:
-    def __init__(self, model_name: str = "base"):
-        self.model = whisper.load_model(model_name)
+    def __init__(self, model=None):
+        self.model = model
         self.syllable_patterns = self._create_syllable_patterns()
     
     def _create_syllable_patterns(self) -> List[str]:

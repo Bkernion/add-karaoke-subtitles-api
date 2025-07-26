@@ -19,7 +19,8 @@ from video_processor import VideoProcessor
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
-# Model will be loaded on first request to avoid startup timeout
+# Load Whisper model once at startup
+whisper_model = whisper.load_model("tiny")
 
 PUBLIC_DIR = Path("public")
 PUBLIC_DIR.mkdir(exist_ok=True)
@@ -43,7 +44,7 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
         unique_id = str(uuid.uuid4())[:8]
         
         video_processor = VideoProcessor()
-        subtitle_generator = KaraokeSubtitleGenerator()
+        subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -140,7 +141,7 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
         unique_id = str(uuid.uuid4())[:8]
         
         video_processor = VideoProcessor()
-        subtitle_generator = KaraokeSubtitleGenerator()
+        subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

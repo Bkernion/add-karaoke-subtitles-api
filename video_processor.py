@@ -43,8 +43,8 @@ class VideoProcessor:
                 vf=f"ass={subtitle_path}",
                 vcodec='libx264',          # H.264 codec
                 acodec='aac',              # AAC audio codec
-                crf=18,                    # High quality (lower = better, 18 is near-lossless)
-                preset='slow',             # Better compression (slower = higher quality)
+                crf=23,                    # Good quality (lower = better, 23 is good balance)
+                preset='ultrafast',       # Faster encoding (ultrafast = quickest)
                 profile='high',            # H.264 high profile
                 pix_fmt='yuv420p',        # Standard pixel format for compatibility
                 movflags='+faststart',    # Optimize for web streaming
@@ -53,7 +53,7 @@ class VideoProcessor:
                 ac=2,                     # Stereo audio
             )
             
-            print(f"🎬 Encoding with high-quality settings (CRF=18, preset=slow, 320k audio)")
+            print(f"🎬 Encoding with optimized settings (CRF=23, preset=ultrafast, 320k audio)")
             ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
             
         except ffmpeg.Error as e:
