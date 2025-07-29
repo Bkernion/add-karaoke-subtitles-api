@@ -165,21 +165,17 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                           highlight_color: str = "#FFFF00",
                           video_height: int = 1080,
                           subtitle_position: float = 0.75) -> str:
+        
+        print(f"📍 Using positioning function - this should appear in logs")
+        
+        # For now, just return the EXACT SAME format as the default function
+        # to test if the positioning function itself is the problem
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # Simple test: for 0.75, just use a larger margin to move subtitles up
-        # MarginV = distance from bottom, so higher number = higher on screen
-        if subtitle_position == 0.75:
-            margin_v = 300  # Test value to move subtitles up significantly
-        else:
-            margin_v = int((1.0 - subtitle_position) * 200)  # Conservative calculation
-        
-        print(f"📍 Custom position: {subtitle_position} -> MarginV: {margin_v} (video_height: {video_height})")
-        
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,{margin_v},1"""
+Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
     
     def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path, 
                          font_name: str = "Arial Rounded MT Bold",
