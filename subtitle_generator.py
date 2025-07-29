@@ -158,9 +158,17 @@ class KaraokeSubtitleGenerator:
         secondary_color = self._hex_to_ass_color(highlight_color)
         
         # Calculate vertical margin based on position (0.0 = top, 1.0 = bottom)
-        # ASS MarginV is distance from bottom, so we need to invert the calculation
-        # Clamp between 10 and video_height-50 to keep subtitles visible
-        margin_v = max(10, min(int((1.0 - subtitle_position) * video_height * 0.9), video_height - 50))
+        # For safety, fallback to default margin if calculation seems wrong
+        try:
+            if subtitle_position < 0 or subtitle_position > 1:
+                margin_v = 10  # Default safe margin
+            else:
+                # ASS MarginV is distance from bottom, so invert the calculation
+                margin_v = int((1.0 - subtitle_position) * video_height * 0.7)
+                # Ensure margin is reasonable (between 10 and video_height/2)
+                margin_v = max(10, min(margin_v, video_height // 2))
+        except:
+            margin_v = 10  # Fallback to safe default
         
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
