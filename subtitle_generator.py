@@ -159,15 +159,43 @@ class KaraokeSubtitleGenerator:
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
     
+    def _create_ass_styles_with_position(self, font_name: str = "Arial Rounded MT Bold",
+                          font_size: int = 24,
+                          font_color: str = "#FFFFFF", 
+                          highlight_color: str = "#FFFF00",
+                          video_height: int = 1080,
+                          subtitle_position: float = 0.75) -> str:
+        primary_color = self._hex_to_ass_color(font_color)
+        secondary_color = self._hex_to_ass_color(highlight_color)
+        
+        # Calculate vertical margin based on position (0.0 = top, 1.0 = bottom)
+        # ASS MarginV is distance from bottom, so invert the calculation
+        # For subtitle_position = 0.75 (3/4 down), we want margin from bottom to be smaller
+        margin_v = int((1.0 - subtitle_position) * video_height * 0.6)
+        
+        # Safety bounds to keep subtitles visible
+        margin_v = max(10, min(margin_v, video_height - 100))
+        
+        print(f"📍 Custom position: {subtitle_position} -> MarginV: {margin_v} (video_height: {video_height})")
+        
+        return f"""[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,{margin_v},1"""
+    
     def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path, 
                          font_name: str = "Arial Rounded MT Bold",
                          font_size: int = 24,
                          font_color: str = "#FFFFFF",
                          highlight_color: str = "#FFFF00",
                          video_width: int = 1920,
-                         video_height: int = 1080) -> None:
+                         video_height: int = 1080,
+                         subtitle_position: float = None) -> None:
         
-        styles = self._create_ass_styles(font_name, font_size, font_color, highlight_color)
+        # Only apply custom positioning if explicitly provided
+        if subtitle_position is not None:
+            styles = self._create_ass_styles_with_position(font_name, font_size, font_color, highlight_color, video_height, subtitle_position)
+        else:
+            styles = self._create_ass_styles(font_name, font_size, font_color, highlight_color)
         
         # Determine video orientation and wrapping strategy
         is_vertical = video_width <= 1080  # Vertical/square videos

@@ -32,6 +32,7 @@ class VideoRequest(BaseModel):
     font_size: int = 24
     font_color: str = "#FFFFFF"  # White by default
     highlight_color: str = "#FFFF00"  # Yellow by default
+    subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
 
 class VideoResponse(BaseModel):
     status: str
@@ -70,7 +71,8 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
                 font_color=video_request.font_color,
                 highlight_color=video_request.highlight_color,
                 video_width=video_info['width'],
-                video_height=video_info['height']
+                video_height=video_info['height'],
+                subtitle_position=video_request.subtitle_position
             )
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
@@ -167,7 +169,8 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
                 font_color=video_request.font_color,
                 highlight_color=video_request.highlight_color,
                 video_width=video_info['width'],
-                video_height=video_info['height']
+                video_height=video_info['height'],
+                subtitle_position=video_request.subtitle_position
             )
             
             video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
