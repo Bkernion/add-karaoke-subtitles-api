@@ -168,13 +168,12 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # Calculate vertical margin based on position (0.0 = top, 1.0 = bottom)
-        # ASS MarginV is distance from bottom, so invert the calculation
-        # For subtitle_position = 0.75 (3/4 down), we want margin from bottom to be smaller
-        margin_v = int((1.0 - subtitle_position) * video_height * 0.6)
-        
-        # Safety bounds to keep subtitles visible
-        margin_v = max(10, min(margin_v, video_height - 100))
+        # Simple test: for 0.75, just use a larger margin to move subtitles up
+        # MarginV = distance from bottom, so higher number = higher on screen
+        if subtitle_position == 0.75:
+            margin_v = 300  # Test value to move subtitles up significantly
+        else:
+            margin_v = int((1.0 - subtitle_position) * 200)  # Conservative calculation
         
         print(f"📍 Custom position: {subtitle_position} -> MarginV: {margin_v} (video_height: {video_height})")
         
