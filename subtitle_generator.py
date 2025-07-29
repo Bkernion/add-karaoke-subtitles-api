@@ -159,7 +159,8 @@ class KaraokeSubtitleGenerator:
         
         # Calculate vertical margin based on position (0.0 = top, 1.0 = bottom)
         # ASS MarginV is distance from bottom, so we need to invert the calculation
-        margin_v = int((1.0 - subtitle_position) * video_height * 0.8)  # 0.8 to avoid extreme edges
+        # Clamp between 10 and video_height-50 to keep subtitles visible
+        margin_v = max(10, min(int((1.0 - subtitle_position) * video_height * 0.9), video_height - 50))
         
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
