@@ -169,9 +169,8 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # For testing: use a much smaller margin like the default (10px)
-        # The large margin (480px) was making subtitles disappear
-        margin_v = 10 + int((1.0 - subtitle_position) * 100)  # Scale to smaller range
+        # Adjust margin calculation to position subtitles higher (closer to 3/4 down)
+        margin_v = 10 + int((1.0 - (subtitle_position / 2)) * 100)
         
         print(f"📍 subtitle_position={subtitle_position} → marginV={margin_v}px from bottom (video_height={video_height})")
         
