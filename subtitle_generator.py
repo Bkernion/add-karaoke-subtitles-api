@@ -169,8 +169,9 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # Just use a fixed higher margin for 0.75 positioning
-        margin_v = 150  # Move subtitles up from bottom
+        # Adjust margin for 3/4 down positioning
+        # 150 was too high (middle), try smaller margin for lower positioning
+        margin_v = 80  # Less margin = closer to bottom = 3/4 down
         
         print(f"📍 Position {subtitle_position} -> MarginV: {margin_v} pixels from bottom")
         
