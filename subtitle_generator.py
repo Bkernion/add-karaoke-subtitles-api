@@ -169,11 +169,11 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # Adjust margin for 3/4 down positioning
-        # 150 was too high (middle), try smaller margin for lower positioning
-        margin_v = 80  # Less margin = closer to bottom = 3/4 down
+        # Compute margin from bottom so that text sits at subtitle_position down from top
+        # margin_v = video_height - (subtitle_position * video_height)  
+        margin_v = int((1.0 - subtitle_position) * video_height)
         
-        print(f"📍 Position {subtitle_position} -> MarginV: {margin_v} pixels from bottom")
+        print(f"📍 subtitle_position={subtitle_position} → marginV={margin_v}px from bottom (video_height={video_height})")
         
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
