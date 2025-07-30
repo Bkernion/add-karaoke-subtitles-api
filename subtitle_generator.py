@@ -169,19 +169,9 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
-        # Calculate margin from bottom based on position
-        # Default margin is 10, we need to increase it to move subtitles up
-        # For 0.75 (3/4 down), we want subtitles higher than default
-        if subtitle_position <= 0.5:
-            # Upper half of screen - large margin from bottom
-            margin_v = int(video_height * 0.4)  # High up on screen
-        elif subtitle_position <= 0.75:
-            # 3/4 position - moderate margin from bottom  
-            margin_v = int(video_height * 0.15)  # About 162 pixels for 1080p
-        else:
-            # Lower part - small margin (closer to default)
-            margin_v = 50
-            
+        # Just use a fixed higher margin for 0.75 positioning
+        margin_v = 150  # Move subtitles up from bottom
+        
         print(f"📍 Position {subtitle_position} -> MarginV: {margin_v} pixels from bottom")
         
         return f"""[V4+ Styles]
