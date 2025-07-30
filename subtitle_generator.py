@@ -188,6 +188,15 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                          video_height: int = 1080,
                          subtitle_position: float = None) -> None:
         
+        # Coerce subtitle_position to float and add debugging
+        if subtitle_position is not None:
+            try:
+                subtitle_position = float(subtitle_position)
+            except Exception:
+                print("⚠️ could not parse subtitle_position:", subtitle_position)
+                subtitle_position = None
+        print("DEBUG:", subtitle_position, type(subtitle_position), video_height)
+        
         # Only apply custom positioning if explicitly provided
         if subtitle_position is not None:
             styles = self._create_ass_styles_with_position(font_name, font_size, font_color, highlight_color, video_height, subtitle_position)
