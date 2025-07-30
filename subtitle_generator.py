@@ -166,16 +166,27 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                           video_height: int = 1080,
                           subtitle_position: float = 0.75) -> str:
         
-        print(f"📍 Using positioning function - this should appear in logs")
-        
-        # For now, just return the EXACT SAME format as the default function
-        # to test if the positioning function itself is the problem
         primary_color = self._hex_to_ass_color(font_color)
         secondary_color = self._hex_to_ass_color(highlight_color)
         
+        # Calculate margin from bottom based on position
+        # Default margin is 10, we need to increase it to move subtitles up
+        # For 0.75 (3/4 down), we want subtitles higher than default
+        if subtitle_position <= 0.5:
+            # Upper half of screen - large margin from bottom
+            margin_v = int(video_height * 0.4)  # High up on screen
+        elif subtitle_position <= 0.75:
+            # 3/4 position - moderate margin from bottom  
+            margin_v = int(video_height * 0.15)  # About 162 pixels for 1080p
+        else:
+            # Lower part - small margin (closer to default)
+            margin_v = 50
+            
+        print(f"📍 Position {subtitle_position} -> MarginV: {margin_v} pixels from bottom")
+        
         return f"""[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1"""
+Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,{margin_v},1"""
     
     def generate_ass_file(self, transcription: Dict[str, Any], output_path: Path, 
                          font_name: str = "Arial Rounded MT Bold",
