@@ -25,7 +25,7 @@ class VideoProcessor:
             (
                 ffmpeg
                 .input(str(video_path))
-                .output(str(audio_path), acodec='pcm_s16le', ac=1, ar='8000')
+                .output(str(audio_path), acodec='pcm_s16le', ac=1, ar='16000')
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True)
             )

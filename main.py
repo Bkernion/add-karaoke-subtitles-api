@@ -20,7 +20,7 @@ from video_processor import VideoProcessor
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
 # Load Whisper model once at startup
-whisper_model = whisper.load_model("tiny")
+whisper_model = whisper.load_model("base")
 
 PUBLIC_DIR = Path("public")
 PUBLIC_DIR.mkdir(exist_ok=True)
