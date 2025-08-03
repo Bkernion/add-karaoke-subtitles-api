@@ -34,6 +34,10 @@ class VideoRequest(BaseModel):
     highlight_color: str = "#FFFF00"  # Yellow by default
     subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
 
+class VideoRequestWithASS(BaseModel):
+    video_url: HttpUrl
+    ass_url: HttpUrl  # URL to the .ass subtitle file from HeyGen
+
 class VideoResponse(BaseModel):
     status: str
     download_url: str
@@ -123,6 +127,7 @@ async def root():
         "endpoints": {
             "health": "/health",
             "generate": "/generate-karaoke-subtitles",
+            "generate-with-ass": "/generate-with-ass-file",
             "docs": "/docs"
         }
     }
@@ -184,6 +189,70 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
             download_url = f"{base_url}/public/{unique_id}_final.mp4"
             
             return Response(content=download_url, media_type="text/plain")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+
+async def download_ass_file(ass_url: str, output_path: Path) -> None:
+    """Download ASS subtitle file from URL"""
+    response = requests.get(str(ass_url), stream=True)
+    response.raise_for_status()
+    
+    async with aiofiles.open(output_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            await f.write(chunk)
+
+@app.post("/generate-with-ass-file", response_model=VideoResponse)
+async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Request) -> VideoResponse:
+    """Generate video with subtitles using provided ASS file from HeyGen"""
+    try:
+        unique_id = str(uuid.uuid4())[:8]
+        
+        video_processor = VideoProcessor()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            input_video_path = temp_path / f"{unique_id}_input.mp4"
+            subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
+            output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
+            
+            # Download video
+            await video_processor.download_video(str(video_request.video_url), input_video_path)
+            
+            # Download ASS file from HeyGen
+            await download_ass_file(str(video_request.ass_url), subtitle_path)
+            
+            # Burn subtitles (skip transcription entirely)
+            video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
+            
+            # Construct full URL - force HTTPS for production
+            if "onrender.com" in str(request.url.netloc):
+                base_url = f"https://{request.url.netloc}"
+            else:
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
+            
+            download_url = f"{base_url}/public/{unique_id}_final.mp4"
+            
+            response_data = {
+                "status": "success",
+                "download_url": download_url,
+                "message": "Video processed with HeyGen ASS subtitles successfully"
+            }
+            
+            # Use standard Response to ensure cleanest JSON
+            import json
+            json_string = json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
+            
+            return Response(
+                content=json_string,
+                media_type="application/json",
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
