@@ -331,46 +331,45 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             wrapped_lines = self._wrap_text_for_video(segment["words"], max_chars_per_line, max_words_per_line)
             
             for line_info in wrapped_lines:
-                karaoke_text = ""
-                
-                for word_info in line_info["words"]:
-                    word = word_info["word"].strip()
-                    word_start = word_info["start"]
-                    word_end = word_info["end"]
+                if enable_karaoke:
+                    # Word-by-word highlighting: create separate dialogue lines for each word
+                    all_words_text = " ".join([w["word"].strip() for w in line_info["words"] if w["word"].strip()])
                     
-                    if not word:
-                        continue
-                    
-                    if enable_karaoke:
-                        # Generate karaoke timing tags
-                        syllables = self._split_into_syllables(word)
+                    for word_idx, word_info in enumerate(line_info["words"]):
+                        word = word_info["word"].strip()
+                        if not word:
+                            continue
+                            
+                        word_start = word_info["start"]
+                        word_end = word_info["end"]
                         
-                        if len(syllables) == 1:
-                            duration_cs = int((word_end - word_start) * 100)
-                            # Ensure duration is at least 10 centiseconds
-                            duration_cs = max(10, duration_cs)  
-                            # Use \k for standard karaoke timing
-                            karaoke_text += f"{{\\k{duration_cs}}}{word}"
-                        else:
-                            syllable_duration = (word_end - word_start) / len(syllables)
-                            for syllable in syllables:
-                                duration_cs = int(syllable_duration * 100)
-                                # Ensure duration is at least 5 centiseconds  
-                                duration_cs = max(5, duration_cs)
-                                # Use \k for standard karaoke timing
-                                karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
-                    else:
-                        # Simple text without karaoke timing tags
-                        karaoke_text += word
+                        # Create text with current word highlighted
+                        highlighted_text = ""
+                        for i, w in enumerate(line_info["words"]):
+                            w_text = w["word"].strip()
+                            if not w_text:
+                                continue
+                            if i == word_idx:
+                                # Highlight current word with color change
+                                highlighted_text += f"{{\\c&H00FFFF&}}{w_text}{{\\c}}"
+                            else:
+                                highlighted_text += w_text
+                            highlighted_text += " "
+                        
+                        highlighted_text = highlighted_text.strip()
+                        
+                        start_time = self._format_timestamp(word_start)
+                        end_time = self._format_timestamp(word_end)
+                        
+                        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{highlighted_text}\n"
+                else:
+                    # Simple text without any highlighting
+                    simple_text = " ".join([w["word"].strip() for w in line_info["words"] if w["word"].strip()])
                     
-                    karaoke_text += " "
-                
-                karaoke_text = karaoke_text.strip()
-                
-                start_time = self._format_timestamp(line_info["start"])
-                end_time = self._format_timestamp(line_info["end"])
-                
-                ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{karaoke_text}\n"
+                    start_time = self._format_timestamp(line_info["start"])
+                    end_time = self._format_timestamp(line_info["end"])
+                    
+                    ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{simple_text}\n"
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(ass_content)
