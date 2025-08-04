@@ -40,7 +40,7 @@ class VideoProcessor:
             output = ffmpeg.output(
                 input_video,
                 str(output_path),
-                vf=f"subtitles={subtitle_path}",
+                vf=f"ass={subtitle_path}",
                 vcodec='libx264',          # H.264 codec
                 acodec='aac',              # AAC audio codec
                 crf=28,                    # Balanced quality (lower = better, 28 is good for speed)

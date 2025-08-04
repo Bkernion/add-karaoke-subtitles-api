@@ -313,6 +313,9 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         ass_content = f"""[Script Info]
 Title: Karaoke Subtitles
 ScriptType: v4.00+
+PlayResX: {video_width}
+PlayResY: {video_height}
+WrapStyle: 0
 
 {styles}
 
@@ -346,16 +349,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             duration_cs = int((word_end - word_start) * 100)
                             # Ensure duration is at least 10 centiseconds
                             duration_cs = max(10, duration_cs)  
-                            # Use \K (capital K) for proper karaoke highlighting
-                            karaoke_text += f"{{\\K{duration_cs}}}{word}"
+                            # Use \k for standard karaoke timing
+                            karaoke_text += f"{{\\k{duration_cs}}}{word}"
                         else:
                             syllable_duration = (word_end - word_start) / len(syllables)
                             for syllable in syllables:
                                 duration_cs = int(syllable_duration * 100)
                                 # Ensure duration is at least 5 centiseconds  
                                 duration_cs = max(5, duration_cs)
-                                # Use \K (capital K) for proper karaoke highlighting
-                                karaoke_text += f"{{\\K{duration_cs}}}{syllable}"
+                                # Use \k for standard karaoke timing
+                                karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
                     else:
                         # Simple text without karaoke timing tags
                         karaoke_text += word
