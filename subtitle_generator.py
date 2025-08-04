@@ -270,7 +270,8 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                          highlight_color: str = "#FFFF00",
                          video_width: int = 1920,
                          video_height: int = 1080,
-                         subtitle_position: float = None) -> None:
+                         subtitle_position: float = None,
+                         enable_karaoke: bool = True) -> None:
         
         # Coerce subtitle_position to float and add debugging
         if subtitle_position is not None:
@@ -337,16 +338,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     if not word:
                         continue
                     
-                    syllables = self._split_into_syllables(word)
-                    
-                    if len(syllables) == 1:
-                        duration_cs = int((word_end - word_start) * 100)
-                        karaoke_text += f"{{\\k{duration_cs}}}{word}"
+                    if enable_karaoke:
+                        # Generate karaoke timing tags
+                        syllables = self._split_into_syllables(word)
+                        
+                        if len(syllables) == 1:
+                            duration_cs = int((word_end - word_start) * 100)
+                            karaoke_text += f"{{\\k{duration_cs}}}{word}"
+                        else:
+                            syllable_duration = (word_end - word_start) / len(syllables)
+                            for syllable in syllables:
+                                duration_cs = int(syllable_duration * 100)
+                                karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
                     else:
-                        syllable_duration = (word_end - word_start) / len(syllables)
-                        for syllable in syllables:
-                            duration_cs = int(syllable_duration * 100)
-                            karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
+                        # Simple text without karaoke timing tags
+                        karaoke_text += word
                     
                     karaoke_text += " "
                 
