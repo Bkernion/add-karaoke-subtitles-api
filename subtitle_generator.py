@@ -342,13 +342,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         
                         # Create text with current word highlighted
                         highlighted_text = ""
+                        highlight_ass_color = self._hex_to_ass_color(highlight_color)
                         for i, w in enumerate(line_info["words"]):
                             w_text = w["word"].strip()
                             if not w_text:
                                 continue
                             if i == word_idx:
-                                # Highlight current word with color change
-                                highlighted_text += f"{{\\c&H00FFFF&}}{w_text}{{\\c}}"
+                                # Highlight current word with user-specified color
+                                highlighted_text += f"{{\\c{highlight_ass_color}}}{w_text}{{\\c}}"
                             else:
                                 highlighted_text += w_text
                             highlighted_text += " "
