@@ -51,8 +51,17 @@ class KaraokeSubtitleGenerator:
             end_time = self._ass_time_to_seconds(parts[2]) 
             text = parts[9].strip()
             
-            # Remove ASS formatting tags like {\k25} for karaoke timing
-            clean_text = re.sub(r'\{[^}]*\}', '', text).strip()
+            # Comprehensive ASS tag removal - multiple passes to catch all variants
+            clean_text = text
+            # Remove all complete ASS tags like {\k25}, {/k9}, {\r}, etc.
+            clean_text = re.sub(r'\{[^}]*\}', '', clean_text)
+            # Remove any remaining curly brackets with content
+            clean_text = re.sub(r'\{[^}]*', '', clean_text)  # Incomplete opening
+            clean_text = re.sub(r'[^{]*\}', '', clean_text)  # Incomplete closing
+            # Remove standalone curly brackets that might remain
+            clean_text = re.sub(r'[{}]', '', clean_text)
+            # Clean up multiple spaces and strip
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
             
             if clean_text:
                 # Split text into words and estimate timing
