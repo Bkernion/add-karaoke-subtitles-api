@@ -24,6 +24,82 @@ class KaraokeSubtitleGenerator:
         )
         return result
     
+    def parse_ass_file(self, ass_path: Path) -> Dict[str, Any]:
+        """Parse ASS file and extract timing and text data in Whisper format"""
+        segments = []
+        
+        with open(ass_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Find dialogue lines
+        dialogue_lines = []
+        for line in content.split('\n'):
+            if line.startswith('Dialogue:'):
+                dialogue_lines.append(line)
+        
+        current_segment = None
+        word_list = []
+        
+        for line in dialogue_lines:
+            # Parse ASS dialogue line format:
+            # Dialogue: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+            parts = line.split(',', 9)
+            if len(parts) < 10:
+                continue
+                
+            start_time = self._ass_time_to_seconds(parts[1])
+            end_time = self._ass_time_to_seconds(parts[2]) 
+            text = parts[9].strip()
+            
+            # Remove ASS formatting tags like {\k25} for karaoke timing
+            clean_text = re.sub(r'\{[^}]*\}', '', text).strip()
+            
+            if clean_text:
+                # Split text into words and estimate timing
+                words = clean_text.split()
+                if words:
+                    duration = end_time - start_time
+                    word_duration = duration / len(words) if len(words) > 0 else duration
+                    
+                    segment_words = []
+                    for i, word in enumerate(words):
+                        word_start = start_time + (i * word_duration)
+                        word_end = word_start + word_duration
+                        
+                        segment_words.append({
+                            'word': word,
+                            'start': word_start,
+                            'end': word_end,
+                            'probability': 1.0  # HeyGen is accurate
+                        })
+                        word_list.append(segment_words[-1])
+                    
+                    segments.append({
+                        'start': start_time,
+                        'end': end_time,
+                        'text': clean_text,
+                        'words': segment_words
+                    })
+        
+        # Return in Whisper transcription format
+        return {
+            'segments': segments,
+            'text': ' '.join([seg['text'] for seg in segments]),
+            'words': word_list
+        }
+    
+    def _ass_time_to_seconds(self, ass_time: str) -> float:
+        """Convert ASS time format (H:MM:SS.CC) to seconds"""
+        # Format: 0:00:01.84
+        parts = ass_time.split(':')
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        seconds_parts = parts[2].split('.')
+        seconds = int(seconds_parts[0])
+        centiseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
+        
+        return hours * 3600 + minutes * 60 + seconds + centiseconds / 100.0
+    
     def _split_into_syllables(self, word: str) -> List[str]:
         if len(word) <= 2:
             return [word]
