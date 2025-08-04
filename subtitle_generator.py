@@ -313,9 +313,6 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
         ass_content = f"""[Script Info]
 Title: Karaoke Subtitles
 ScriptType: v4.00+
-PlayResX: {video_width}
-PlayResY: {video_height}
-WrapStyle: 0
 
 {styles}
 
