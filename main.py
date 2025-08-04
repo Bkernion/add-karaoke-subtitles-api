@@ -247,7 +247,7 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
                 video_width=video_info['width'],
                 video_height=video_info['height'],
                 subtitle_position=video_request.subtitle_position,
-                enable_karaoke=False  # Disable karaoke timing for HeyGen workflow
+                enable_karaoke=True  # Enable karaoke timing for highlight effect
             )
             
             # Burn subtitles with custom formatting

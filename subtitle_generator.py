@@ -344,11 +344,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         
                         if len(syllables) == 1:
                             duration_cs = int((word_end - word_start) * 100)
+                            # Ensure duration is at least 10 centiseconds
+                            duration_cs = max(10, duration_cs)  
                             karaoke_text += f"{{\\k{duration_cs}}}{word}"
                         else:
                             syllable_duration = (word_end - word_start) / len(syllables)
                             for syllable in syllables:
                                 duration_cs = int(syllable_duration * 100)
+                                # Ensure duration is at least 5 centiseconds  
+                                duration_cs = max(5, duration_cs)
                                 karaoke_text += f"{{\\k{duration_cs}}}{syllable}"
                     else:
                         # Simple text without karaoke timing tags
@@ -357,6 +361,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     karaoke_text += " "
                 
                 karaoke_text = karaoke_text.strip()
+                
+                # Debug: Print the generated karaoke text to see what we're creating
+                print(f"🎵 Generated karaoke text: '{karaoke_text}'")
                 
                 start_time = self._format_timestamp(line_info["start"])
                 end_time = self._format_timestamp(line_info["end"])
