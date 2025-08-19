@@ -33,6 +33,7 @@ class VideoRequest(BaseModel):
     font_color: str = "#FFFFFF"  # White by default
     highlight_color: str = "#FFFF00"  # Yellow by default
     subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
+    headers: Dict[str, str] | None = None  # Optional: extra request headers for fetching
 
 class VideoRequestWithASS(BaseModel):
     video_url: HttpUrl
@@ -42,6 +43,7 @@ class VideoRequestWithASS(BaseModel):
     font_color: str = "#FFFFFF"  # White by default
     highlight_color: str = "#FFFF00"  # Yellow by default
     subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
+    headers: Dict[str, str] | None = None  # Optional: extra request headers for fetching
 
 class VideoResponse(BaseModel):
     status: str
@@ -64,7 +66,7 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
-            await video_processor.download_video(str(video_request.video_url), input_video_path)
+            await video_processor.download_video(str(video_request.video_url), input_video_path, extra_headers=video_request.headers)
             
             video_info = video_processor.get_video_info(input_video_path)
             
@@ -163,7 +165,7 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
             subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
-            await video_processor.download_video(str(video_request.video_url), input_video_path)
+            await video_processor.download_video(str(video_request.video_url), input_video_path, extra_headers=video_request.headers)
             
             video_info = video_processor.get_video_info(input_video_path)
             
@@ -198,14 +200,58 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
-async def download_ass_file(ass_url: str, output_path: Path) -> None:
-    """Download ASS subtitle file from URL"""
-    response = requests.get(str(ass_url), stream=True)
+async def download_ass_file(ass_url: str, output_path: Path, extra_headers: Dict[str, str] | None = None) -> None:
+    """Download ASS subtitle file from URL with resilient headers"""
+    headers_primary = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+    }
+    headers_secondary = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) "
+            "Gecko/20100101 Firefox/125.0"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+    }
+
+    # Provider heuristics
+    if "heygen.ai" in str(ass_url).lower():
+        headers_primary.update({
+            "Referer": "https://app.heygen.com/",
+            "Origin": "https://app.heygen.com",
+        })
+        headers_secondary.update({
+            "Referer": "https://app.heygen.com/",
+            "Origin": "https://app.heygen.com",
+        })
+
+    if extra_headers:
+        headers_primary.update(extra_headers)
+        headers_secondary.update(extra_headers)
+
+    response = requests.get(str(ass_url), headers=headers_primary, stream=True, allow_redirects=True, timeout=(10, 60))
+    if response.status_code == 403:
+        try:
+            response.close()
+        except Exception:
+            pass
+        response = requests.get(str(ass_url), headers=headers_secondary, stream=True, allow_redirects=True, timeout=(10, 60))
     response.raise_for_status()
     
     async with aiofiles.open(output_path, 'wb') as f:
         for chunk in response.iter_content(chunk_size=8192):
-            await f.write(chunk)
+            if chunk:
+                await f.write(chunk)
 
 @app.post("/generate-with-ass-file")
 async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Request):
@@ -228,7 +274,7 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
             await video_processor.download_video(str(video_request.video_url), input_video_path)
             
             # Download ASS file from HeyGen
-            await download_ass_file(str(video_request.ass_url), heygen_ass_path)
+            await download_ass_file(str(video_request.ass_url), heygen_ass_path, extra_headers=video_request.headers)
             
             # Get video info for proper formatting
             video_info = video_processor.get_video_info(input_video_path)
