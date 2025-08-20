@@ -11,7 +11,7 @@ import ffmpeg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from slugify import slugify
 
 from subtitle_generator import KaraokeSubtitleGenerator
@@ -27,7 +27,7 @@ PUBLIC_DIR.mkdir(exist_ok=True)
 app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
 class VideoRequest(BaseModel):
-    video_url: HttpUrl
+    video_url: str  # Keep exact presigned URL without normalization
     font_name: str = "Arial Rounded MT Bold"
     font_size: int = 24
     font_color: str = "#FFFFFF"  # White by default
@@ -36,8 +36,8 @@ class VideoRequest(BaseModel):
     headers: Dict[str, str] | None = None  # Optional: extra request headers for fetching
 
 class VideoRequestWithASS(BaseModel):
-    video_url: HttpUrl
-    ass_url: HttpUrl  # URL to the .ass subtitle file from HeyGen
+    video_url: str  # Keep exact presigned URL
+    ass_url: str  # Keep exact ASS URL
     font_name: str = "Arial Rounded MT Bold"
     font_size: int = 24
     font_color: str = "#FFFFFF"  # White by default
