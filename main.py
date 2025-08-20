@@ -254,13 +254,15 @@ async def download_ass_file(ass_url: str, output_path: Path, extra_headers: Dict
         headers_primary.update(extra_headers)
         headers_secondary.update(extra_headers)
 
-    response = requests.get(str(ass_url), headers=headers_primary, stream=True, allow_redirects=True, timeout=(10, 60), trust_env=False)
+    session = requests.Session()
+    session.trust_env = False
+    response = session.get(str(ass_url), headers=headers_primary, stream=True, allow_redirects=True, timeout=(10, 60))
     if response.status_code == 403:
         try:
             response.close()
         except Exception:
             pass
-        response = requests.get(str(ass_url), headers=headers_secondary, stream=True, allow_redirects=True, timeout=(10, 60), trust_env=False)
+        response = session.get(str(ass_url), headers=headers_secondary, stream=True, allow_redirects=True, timeout=(10, 60))
     response.raise_for_status()
     
     async with aiofiles.open(output_path, 'wb') as f:

@@ -32,13 +32,14 @@ class VideoProcessor:
             headers_primary.update(extra_headers)
             headers_secondary.update(extra_headers)
 
-        response = requests.get(
+        session = requests.Session()
+        session.trust_env = False  # Avoid proxy/env rewriting for signed URLs
+
+        response = session.get(
             url,
             headers=headers_primary,
             stream=True,
             allow_redirects=True,
-            # Avoid proxy/env rewriting
-            trust_env=False,
             timeout=(10, 180)
         )
 
@@ -48,12 +49,11 @@ class VideoProcessor:
                 response.close()
             except Exception:
                 pass
-            response = requests.get(
+            response = session.get(
                 url,
                 headers=headers_secondary,
                 stream=True,
                 allow_redirects=True,
-                trust_env=False,
                 timeout=(10, 180)
             )
 
@@ -62,7 +62,7 @@ class VideoProcessor:
         except requests.HTTPError as http_err:
             # Capture upstream error body for diagnostics (non-streaming fetch)
             try:
-                diag = requests.get(url, headers=headers_secondary, timeout=(10, 30), trust_env=False)
+                diag = session.get(url, headers=headers_secondary, timeout=(10, 30))
                 body_snippet = diag.text[:500]
             except Exception:
                 body_snippet = "(no upstream body)"
