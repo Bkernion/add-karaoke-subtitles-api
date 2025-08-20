@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from slugify import slugify
+import base64
 
 from subtitle_generator import KaraokeSubtitleGenerator
 from video_processor import VideoProcessor
@@ -34,6 +35,7 @@ class VideoRequest(BaseModel):
     highlight_color: str = "#FFFF00"  # Yellow by default
     subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
     headers: Dict[str, str] | None = None  # Optional: extra request headers for fetching
+    base64_urls: bool | None = None  # If true, the URLs are base64-encoded
 
 class VideoRequestWithASS(BaseModel):
     video_url: str  # Keep exact presigned URL
@@ -44,6 +46,7 @@ class VideoRequestWithASS(BaseModel):
     highlight_color: str = "#FFFF00"  # Yellow by default
     subtitle_position: float = None  # Optional: 0.0 = top, 1.0 = bottom, 0.75 = 3/4 down
     headers: Dict[str, str] | None = None  # Optional: extra request headers for fetching
+    base64_urls: bool | None = None  # If true, the URLs are base64-encoded
 
 class VideoResponse(BaseModel):
     status: str
@@ -66,7 +69,13 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
-            await video_processor.download_video(str(video_request.video_url), input_video_path, extra_headers=video_request.headers)
+            video_url = video_request.video_url
+            if video_request.base64_urls:
+                try:
+                    video_url = base64.b64decode(video_url).decode("utf-8")
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid base64 video_url")
+            await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
             
             video_info = video_processor.get_video_info(input_video_path)
             
@@ -165,7 +174,13 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
             subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
-            await video_processor.download_video(str(video_request.video_url), input_video_path, extra_headers=video_request.headers)
+            video_url = video_request.video_url
+            if video_request.base64_urls:
+                try:
+                    video_url = base64.b64decode(video_url).decode("utf-8")
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid base64 video_url")
+            await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
             
             video_info = video_processor.get_video_info(input_video_path)
             
@@ -239,13 +254,13 @@ async def download_ass_file(ass_url: str, output_path: Path, extra_headers: Dict
         headers_primary.update(extra_headers)
         headers_secondary.update(extra_headers)
 
-    response = requests.get(str(ass_url), headers=headers_primary, stream=True, allow_redirects=True, timeout=(10, 60))
+    response = requests.get(str(ass_url), headers=headers_primary, stream=True, allow_redirects=True, timeout=(10, 60), trust_env=False)
     if response.status_code == 403:
         try:
             response.close()
         except Exception:
             pass
-        response = requests.get(str(ass_url), headers=headers_secondary, stream=True, allow_redirects=True, timeout=(10, 60))
+        response = requests.get(str(ass_url), headers=headers_secondary, stream=True, allow_redirects=True, timeout=(10, 60), trust_env=False)
     response.raise_for_status()
     
     async with aiofiles.open(output_path, 'wb') as f:
@@ -270,11 +285,21 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
             custom_subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
             
+            # Prepare URLs (optional base64 decoding)
+            video_url = video_request.video_url
+            ass_url = video_request.ass_url
+            if video_request.base64_urls:
+                try:
+                    video_url = base64.b64decode(video_url).decode("utf-8")
+                    ass_url = base64.b64decode(ass_url).decode("utf-8")
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid base64 URLs")
+
             # Download video
-            await video_processor.download_video(str(video_request.video_url), input_video_path)
+            await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
             
             # Download ASS file from HeyGen
-            await download_ass_file(str(video_request.ass_url), heygen_ass_path, extra_headers=video_request.headers)
+            await download_ass_file(str(ass_url), heygen_ass_path, extra_headers=video_request.headers)
             
             # Get video info for proper formatting
             video_info = video_processor.get_video_info(input_video_path)
