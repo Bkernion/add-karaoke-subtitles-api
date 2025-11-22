@@ -35,13 +35,7 @@ class VideoProcessor:
         session = requests.Session()
         session.trust_env = False  # Avoid proxy/env rewriting for signed URLs
 
-        response = session.get(
-            url,
-            headers=headers_primary,
-            stream=True,
-            allow_redirects=True,
-            timeout=(10, 180)
-        )
+        response = self._send_preserving_url(session, url, headers_primary, timeout=(10, 180))
 
         # Retry with alternate headers if forbidden
         if response.status_code == 403:
@@ -49,20 +43,14 @@ class VideoProcessor:
                 response.close()
             except Exception:
                 pass
-            response = session.get(
-                url,
-                headers=headers_secondary,
-                stream=True,
-                allow_redirects=True,
-                timeout=(10, 180)
-            )
+            response = self._send_preserving_url(session, url, headers_secondary, timeout=(10, 180))
 
         try:
             response.raise_for_status()
         except requests.HTTPError as http_err:
             # Capture upstream error body for diagnostics (non-streaming fetch)
             try:
-                diag = session.get(url, headers=headers_secondary, timeout=(10, 30))
+                diag = self._send_preserving_url(session, url, headers_secondary, timeout=(10, 30))
                 body_snippet = diag.text[:500]
             except Exception:
                 body_snippet = "(no upstream body)"
@@ -160,3 +148,11 @@ class VideoProcessor:
             "Accept-Encoding": "identity",
             "Connection": "keep-alive",
         }
+
+    def _send_preserving_url(self, session: requests.Session, url: str, headers: dict, timeout: tuple[int, int]):
+        """Send a GET request using the exact URL string without any re-quoting/re-encoding."""
+        req = requests.Request("GET", url, headers=headers)
+        prepped = session.prepare_request(req)
+        # Force the exact URL (avoid any library requote/encoding changes)
+        prepped.url = url
+        return session.send(prepped, stream=True, timeout=timeout, allow_redirects=True)
