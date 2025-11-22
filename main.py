@@ -309,12 +309,16 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
             
             # Download ASS file from HeyGen
             await download_ass_file(str(ass_url), heygen_ass_path, extra_headers=video_request.headers)
+            print(f"📥 Downloaded HeyGen ASS file: {heygen_ass_path.stat().st_size} bytes")
             
             # Get video info for proper formatting
             video_info = video_processor.get_video_info(input_video_path)
+            print(f"🎥 Video info: {video_info['width']}x{video_info['height']}")
             
             # Parse HeyGen ASS file to extract timing and words
             transcription = subtitle_generator.parse_ass_file(heygen_ass_path)
+            print(f"📝 Parsed {len(transcription.get('segments', []))} segments from ASS file")
+            print(f"📝 Total text: {transcription.get('text', '')[:100]}...")
             
             # Generate new ASS file with custom formatting using HeyGen's timing
             subtitle_generator.generate_ass_file(
@@ -329,9 +333,12 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
                 subtitle_position=video_request.subtitle_position,
                 enable_karaoke=True  # Enable karaoke timing for highlight effect
             )
+            print(f"✍️ Generated custom ASS file: {custom_subtitle_path.stat().st_size} bytes")
             
             # Burn subtitles with custom formatting
+            print(f"🔥 Burning subtitles into video...")
             video_processor.burn_subtitles(input_video_path, custom_subtitle_path, output_video_path)
+            print(f"✅ Final video created: {output_video_path.stat().st_size} bytes")
             
             # Construct full URL - force HTTPS for production
             if "onrender.com" in str(request.url.netloc):

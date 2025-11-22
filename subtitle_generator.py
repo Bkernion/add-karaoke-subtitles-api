@@ -31,11 +31,13 @@ class KaraokeSubtitleGenerator:
         # Try multiple encodings to handle different ASS file formats
         encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
         content = None
+        used_encoding = None
         
         for encoding in encodings:
             try:
                 with open(ass_path, 'r', encoding=encoding) as f:
                     content = f.read()
+                used_encoding = encoding
                 break  # Successfully read, exit loop
             except (UnicodeDecodeError, LookupError):
                 continue  # Try next encoding
@@ -45,12 +47,17 @@ class KaraokeSubtitleGenerator:
             with open(ass_path, 'rb') as f:
                 raw_content = f.read()
             content = raw_content.decode('utf-8', errors='replace')
+            used_encoding = 'utf-8 (with error replacement)'
+        
+        print(f"🔤 Successfully read ASS file using {used_encoding} encoding")
         
         # Find dialogue lines
         dialogue_lines = []
         for line in content.split('\n'):
             if line.startswith('Dialogue:'):
                 dialogue_lines.append(line)
+        
+        print(f"💬 Found {len(dialogue_lines)} dialogue lines in ASS file")
         
         current_segment = None
         word_list = []
@@ -335,6 +342,7 @@ ScriptType: v4.00+
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
         
+        dialogue_count = 0
         for segment in transcription["segments"]:
             if "words" not in segment:
                 continue
@@ -375,6 +383,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         end_time = self._format_timestamp(word_end)
                         
                         ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{highlighted_text}\n"
+                        dialogue_count += 1
                 else:
                     # Simple text without any highlighting
                     simple_text = " ".join([w["word"].strip() for w in line_info["words"] if w["word"].strip()])
@@ -383,6 +392,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_time = self._format_timestamp(line_info["end"])
                     
                     ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{simple_text}\n"
+                    dialogue_count += 1
+        
+        print(f"✨ Generated {dialogue_count} dialogue lines in custom ASS file")
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(ass_content)
