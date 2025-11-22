@@ -28,6 +28,22 @@ class KaraokeSubtitleGenerator:
         """Parse ASS file and extract timing and text data in Whisper format"""
         segments = []
         
+        # First, check if this is actually a text file or binary
+        with open(ass_path, 'rb') as f:
+            first_bytes = f.read(20)
+        
+        print(f"🔍 File magic bytes (first 20): {first_bytes[:20]}")
+        print(f"🔍 File magic hex: {first_bytes[:20].hex()}")
+        
+        # Check for common video/binary formats
+        if first_bytes.startswith(b'\x00\x00\x00'):
+            # Likely MP4/MOV (starts with size + 'ftyp')
+            if b'ftyp' in first_bytes or b'moov' in first_bytes:
+                raise Exception("Downloaded file is a video file (MP4/MOV), not an ASS subtitle file. Check that caption_url points to the subtitle file, not the video.")
+        
+        if first_bytes.startswith(b'RIFF'):
+            raise Exception("Downloaded file is an AVI video file, not an ASS subtitle file.")
+        
         # Try multiple encodings to handle different ASS file formats
         encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
         content = None
