@@ -50,10 +50,17 @@ class KaraokeSubtitleGenerator:
             used_encoding = 'utf-8 (with error replacement)'
         
         print(f"🔤 Successfully read ASS file using {used_encoding} encoding")
+        print(f"📄 ASS file has {len(content)} characters, {len(content.split(chr(10)))} lines")
+        
+        # Debug: Show first 20 lines of the file
+        lines = content.split('\n')
+        print(f"🔍 First 20 lines of ASS file:")
+        for i, line in enumerate(lines[:20]):
+            print(f"   Line {i+1}: {line[:100]}")
         
         # Find dialogue lines
         dialogue_lines = []
-        for line in content.split('\n'):
+        for line in lines:
             if line.startswith('Dialogue:'):
                 dialogue_lines.append(line)
         
