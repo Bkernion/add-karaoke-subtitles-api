@@ -36,13 +36,18 @@ class KaraokeSubtitleGenerator:
         print(f"🔍 File magic hex: {first_bytes[:20].hex()}")
         
         # Check for common video/binary formats
-        if first_bytes.startswith(b'\x00\x00\x00'):
-            # Likely MP4/MOV (starts with size + 'ftyp')
-            if b'ftyp' in first_bytes or b'moov' in first_bytes:
-                raise Exception("Downloaded file is a video file (MP4/MOV), not an ASS subtitle file. Check that caption_url points to the subtitle file, not the video.")
+        if b'ftyp' in first_bytes[:20] or b'moov' in first_bytes[:20]:
+            raise Exception(
+                "❌ ERROR: The caption_url is pointing to a VIDEO FILE (MP4/MOV), not a subtitle file! "
+                "In your n8n workflow, make sure 'caption_url' uses the SUBTITLE URL from HeyGen, not the video URL. "
+                "HeyGen provides separate URLs for video and captions - you need the caption/subtitle URL."
+            )
         
         if first_bytes.startswith(b'RIFF'):
-            raise Exception("Downloaded file is an AVI video file, not an ASS subtitle file.")
+            raise Exception(
+                "❌ ERROR: The caption_url is pointing to a VIDEO FILE (AVI), not a subtitle file! "
+                "Make sure 'caption_url' uses the subtitle URL, not the video URL."
+            )
         
         # Try multiple encodings to handle different ASS file formats
         encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
