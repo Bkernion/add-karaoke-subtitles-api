@@ -28,8 +28,23 @@ class KaraokeSubtitleGenerator:
         """Parse ASS file and extract timing and text data in Whisper format"""
         segments = []
         
-        with open(ass_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Try multiple encodings to handle different ASS file formats
+        encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
+        content = None
+        
+        for encoding in encodings:
+            try:
+                with open(ass_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                break  # Successfully read, exit loop
+            except (UnicodeDecodeError, LookupError):
+                continue  # Try next encoding
+        
+        if content is None:
+            # Last resort: read as binary and decode with errors='replace'
+            with open(ass_path, 'rb') as f:
+                raw_content = f.read()
+            content = raw_content.decode('utf-8', errors='replace')
         
         # Find dialogue lines
         dialogue_lines = []
