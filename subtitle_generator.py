@@ -112,6 +112,11 @@ class KaraokeSubtitleGenerator:
                         'words': segment_words
                     })
         
+        print(f"✅ Parsed {len(segments)} segments with {len(word_list)} total words")
+        if segments:
+            print(f"   First segment: {segments[0].get('text', '')[:50]}...")
+            print(f"   First segment has {len(segments[0].get('words', []))} words")
+        
         # Return in Whisper transcription format
         return {
             'segments': segments,
@@ -295,6 +300,9 @@ Style: Default,{font_name},{font_size},{primary_color},{secondary_color},&H00000
                          subtitle_position: float = None,
                          enable_karaoke: bool = True) -> None:
         
+        # Debug transcription input
+        print(f"🔍 generate_ass_file received transcription with {len(transcription.get('segments', []))} segments")
+        
         # Coerce subtitle_position to float and add debugging
         if subtitle_position is not None:
             try:
@@ -343,8 +351,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
         
         dialogue_count = 0
+        segments_processed = 0
+        segments_skipped = 0
+        
         for segment in transcription["segments"]:
+            segments_processed += 1
+            
             if "words" not in segment:
+                segments_skipped += 1
+                print(f"⚠️ Segment {segments_processed} has no 'words' key: {segment.keys()}")
+                continue
+            
+            if not segment["words"]:
+                segments_skipped += 1
+                print(f"⚠️ Segment {segments_processed} has empty 'words' array")
                 continue
             
             # Apply adaptive text wrapping based on video orientation
@@ -394,7 +414,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{simple_text}\n"
                     dialogue_count += 1
         
-        print(f"✨ Generated {dialogue_count} dialogue lines in custom ASS file")
+        print(f"📊 Processed {segments_processed} segments, skipped {segments_skipped}, generated {dialogue_count} dialogue lines")
         
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(ass_content)
