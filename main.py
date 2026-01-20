@@ -21,6 +21,7 @@ from caption_parser import parse_caption_file
 from style_engine import StyleEngine
 from frame_generator import FrameGenerator, FrameDimensions
 from video_assembler import VideoAssembler, create_frames_with_timing
+from font_registry import get_default_registry
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
@@ -85,6 +86,79 @@ class ArtisticVideoResponse(BaseModel):
     status: str
     download_url: str
     message: str = ""
+
+
+class FontUploadResponse(BaseModel):
+    """Response model for font upload."""
+    status: str
+    font_name: str
+    message: str = ""
+
+
+# TTF magic bytes: The first 4 bytes of a valid TrueType font file
+# Can be: 0x00010000 (TrueType), 0x4F54544F (OpenType 'OTTO'), or 0x74727565 ('true')
+TTF_MAGIC_BYTES = [
+    b'\x00\x01\x00\x00',  # TrueType
+    b'\x4F\x54\x54\x4F',  # OpenType (OTTO)
+    b'\x74\x72\x75\x65',  # 'true' (TrueType on Mac)
+]
+
+
+def is_valid_ttf(content: bytes) -> bool:
+    """
+    Validate that the file content appears to be a valid TTF/OTF font file.
+
+    Args:
+        content: The file content bytes.
+
+    Returns:
+        True if the file starts with valid TTF magic bytes, False otherwise.
+    """
+    if len(content) < 4:
+        return False
+    header = content[:4]
+    return any(header == magic for magic in TTF_MAGIC_BYTES)
+
+
+def sanitize_font_filename(filename: str) -> str:
+    """
+    Sanitize a font filename to prevent path traversal and invalid characters.
+
+    Args:
+        filename: The original filename.
+
+    Returns:
+        A sanitized filename safe for filesystem use.
+    """
+    # Extract base name (remove any path components)
+    base_name = os.path.basename(filename)
+
+    # Remove .ttf extension if present (we'll add it back)
+    if base_name.lower().endswith('.ttf'):
+        base_name = base_name[:-4]
+    elif base_name.lower().endswith('.otf'):
+        base_name = base_name[:-4]
+
+    # Use slugify to create a safe filename, but preserve case
+    # Remove special characters, keeping only alphanumeric and spaces
+    safe_chars = []
+    for char in base_name:
+        if char.isalnum() or char in ' -_':
+            safe_chars.append(char)
+    safe_name = ''.join(safe_chars).strip()
+
+    # Replace spaces with nothing to create CamelCase-like names
+    parts = safe_name.split()
+    if parts:
+        # Capitalize first letter of each part for consistent naming
+        safe_name = ''.join(part.capitalize() if part else '' for part in parts)
+
+    # Fallback if empty after sanitization
+    if not safe_name:
+        safe_name = 'CustomFont'
+
+    return safe_name + '.ttf'
+
 
 @app.post("/generate-karaoke-subtitles", response_model=VideoResponse)
 async def generate_karaoke_subtitles(video_request: VideoRequest, request: Request) -> VideoResponse:
@@ -813,6 +887,89 @@ async def generate_artistic_video_upload(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
+
+
+# Font directory path
+FONTS_DIR = Path(__file__).parent / "fonts"
+
+
+@app.post("/upload-font", response_model=FontUploadResponse)
+async def upload_font(
+    font_file: UploadFile = File(..., description="TTF font file to upload"),
+):
+    """
+    Upload a custom TTF font for use in artistic video generation.
+
+    Accepts a TTF font file, validates it, and saves it to the fonts directory
+    with a sanitized filename. The font will be immediately available for use
+    in subsequent video generation requests.
+
+    Args:
+        font_file: The TTF font file to upload.
+
+    Returns:
+        FontUploadResponse with the font name to use in future requests.
+    """
+    try:
+        # Read file content
+        content = await font_file.read()
+
+        # Validate file size (limit to 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        if len(content) > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail="Font file too large. Maximum size is 10MB."
+            )
+
+        # Validate TTF magic bytes
+        if not is_valid_ttf(content):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid font file. File must be a valid TTF or OTF font."
+            )
+
+        # Get original filename and sanitize it
+        original_filename = font_file.filename or "CustomFont.ttf"
+        safe_filename = sanitize_font_filename(original_filename)
+
+        # Ensure fonts directory exists
+        FONTS_DIR.mkdir(exist_ok=True)
+
+        # Generate unique filename if font already exists
+        font_path = FONTS_DIR / safe_filename
+        if font_path.exists():
+            # Add a unique suffix to avoid overwriting
+            base_name = safe_filename[:-4]  # Remove .ttf
+            counter = 1
+            while font_path.exists():
+                safe_filename = f"{base_name}_{counter}.ttf"
+                font_path = FONTS_DIR / safe_filename
+                counter += 1
+
+        # Save the font file
+        async with aiofiles.open(font_path, 'wb') as f:
+            await f.write(content)
+
+        # Refresh the font registry to pick up the new font
+        font_registry = get_default_registry()
+        font_registry.refresh()
+
+        # Extract font name (without .ttf extension) for response
+        font_name = safe_filename[:-4]
+
+        print(f"📥 Font uploaded: {font_name} ({len(content)} bytes)")
+
+        return FontUploadResponse(
+            status="success",
+            font_name=font_name,
+            message=f"Font '{font_name}' uploaded successfully and is now available for use"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading font: {str(e)}")
 
 
 if __name__ == "__main__":
