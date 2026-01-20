@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from color_utils import hex_to_rgb
 from font_registry import get_font_path
-from style_engine import FrameStyle, GradientDirection, TextPosition
+from style_engine import FrameStyle, GradientDirection, HighlightStyle, TextPosition
 
 
 class AspectRatio(Enum):
@@ -279,6 +279,82 @@ class FrameGenerator:
 
         return x, y
 
+    def _draw_highlight_box(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text_x: int,
+        text_y: int,
+        text_bbox: tuple[int, int, int, int],
+        color: str,
+        padding: int,
+    ) -> None:
+        """
+        Draw a rectangular highlight box behind text.
+
+        Args:
+            draw: PIL ImageDraw object.
+            text_x: X position of text.
+            text_y: Y position of text.
+            text_bbox: Bounding box of text (left, top, right, bottom) relative to (0,0).
+            color: Hex color string for highlight.
+            padding: Padding around text in pixels.
+        """
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        # Calculate highlight box coordinates with padding
+        box_left = text_x - padding
+        box_top = text_y - padding
+        box_right = text_x + text_width + padding
+        box_bottom = text_y + text_height + padding
+
+        rgb = hex_to_rgb(color)
+        draw.rectangle([box_left, box_top, box_right, box_bottom], fill=rgb)
+
+    def _draw_highlight_brush(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text_x: int,
+        text_y: int,
+        text_bbox: tuple[int, int, int, int],
+        color: str,
+        padding: int,
+    ) -> None:
+        """
+        Draw an angled parallelogram highlight (brush stroke style) behind text.
+
+        Args:
+            draw: PIL ImageDraw object.
+            text_x: X position of text.
+            text_y: Y position of text.
+            text_bbox: Bounding box of text (left, top, right, bottom) relative to (0,0).
+            color: Hex color string for highlight.
+            padding: Padding around text in pixels.
+        """
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        # Calculate base rectangle coordinates with padding
+        left = text_x - padding
+        top = text_y - padding
+        right = text_x + text_width + padding
+        bottom = text_y + text_height + padding
+
+        # Skew amount for parallelogram (based on height for consistent angle)
+        skew = int((bottom - top) * 0.25)
+
+        # Create parallelogram points (skewed to the right at the top)
+        # Points are: top-left, top-right, bottom-right, bottom-left
+        points = [
+            (left + skew, top),      # top-left (shifted right)
+            (right + skew, top),     # top-right (shifted right)
+            (right, bottom),         # bottom-right
+            (left, bottom),          # bottom-left
+        ]
+
+        rgb = hex_to_rgb(color)
+        draw.polygon(points, fill=rgb)
+
     def generate_frame(
         self,
         word: str,
@@ -336,8 +412,19 @@ class FrameGenerator:
         # Get font color
         font_color = hex_to_rgb(style.font_color)
 
+        # Draw highlight behind text if enabled
+        if style.highlight_style != HighlightStyle.NONE and style.highlight_color:
+            if style.highlight_style == HighlightStyle.BOX:
+                self._draw_highlight_box(
+                    draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
+                )
+            elif style.highlight_style == HighlightStyle.BRUSH:
+                self._draw_highlight_brush(
+                    draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
+                )
+
         # Draw the text
-        # Note: Rotation, shadows, glow, and highlights are handled in later user stories
+        # Note: Rotation, shadows, and glow are handled in later user stories
         draw.text((x, y), word, font=font, fill=font_color)
 
         return image
