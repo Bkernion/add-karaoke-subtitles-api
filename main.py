@@ -8,7 +8,7 @@ import aiofiles
 import requests
 import whisper
 import ffmpeg
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -603,6 +603,174 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
+
+
+@app.post("/generate-artistic-video-upload", response_model=ArtisticVideoResponse)
+async def generate_artistic_video_upload(
+    request: Request,
+    caption_file: UploadFile | None = File(None, description="Optional .ass or .srt caption file"),
+    audio_file: UploadFile | None = File(None, description="Optional audio file (.mp3, .wav)"),
+    video_file: UploadFile | None = File(None, description="Optional video file (audio will be extracted)"),
+    output_format: str = Form("9:16", description="Output format: 9:16, 1:1, or 16:9"),
+):
+    """
+    Generate an artistic word-by-word video with dynamic typography using file uploads.
+
+    Creates scroll-stopping social media videos where each word appears on its own
+    artistic frame with varying fonts, colors, positions, backgrounds, and effects.
+
+    Accepts caption files (.ass/.srt) and audio via file upload.
+    If video_file is provided instead of audio_file, audio will be extracted from it.
+    """
+    try:
+        # Validate output format
+        if output_format not in ("9:16", "1:1", "16:9"):
+            raise HTTPException(
+                status_code=400,
+                detail="output_format must be one of: 9:16, 1:1, 16:9"
+            )
+
+        # Validate that at least one audio source is provided
+        if not audio_file and not video_file:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one of audio_file or video_file must be provided"
+            )
+
+        # Validate that caption file is provided (required for this endpoint)
+        if not caption_file:
+            raise HTTPException(
+                status_code=400,
+                detail="caption_file is required for this endpoint"
+            )
+
+        unique_id = str(uuid.uuid4())[:8]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Determine caption file extension from filename
+            caption_ext = ".ass"
+            if caption_file.filename:
+                filename_lower = caption_file.filename.lower()
+                if filename_lower.endswith(".srt"):
+                    caption_ext = ".srt"
+                elif filename_lower.endswith(".ass") or filename_lower.endswith(".ssa"):
+                    caption_ext = ".ass"
+
+            caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
+            audio_path = temp_path / f"{unique_id}_audio.wav"
+            output_video_path = PUBLIC_DIR / f"{unique_id}_artistic.mp4"
+
+            # Save caption file
+            print(f"📥 Saving caption file...")
+            async with aiofiles.open(caption_path, 'wb') as f:
+                content = await caption_file.read()
+                await f.write(content)
+            print(f"✅ Caption saved: {caption_path.stat().st_size} bytes")
+
+            # Get audio - either from audio file or extract from video
+            video_processor = VideoProcessor()
+            if audio_file:
+                # Save audio file and convert to WAV
+                audio_download_path = temp_path / f"{unique_id}_audio_upload.mp3"
+                print(f"📥 Saving audio file...")
+                async with aiofiles.open(audio_download_path, 'wb') as f:
+                    content = await audio_file.read()
+                    await f.write(content)
+                print(f"✅ Audio saved: {audio_download_path.stat().st_size} bytes")
+
+                # Convert to WAV for consistent processing
+                try:
+                    ffmpeg.input(str(audio_download_path)).output(
+                        str(audio_path),
+                        acodec='pcm_s16le',
+                        ac=1,
+                        ar='16000'
+                    ).overwrite_output().run(capture_stdout=True, capture_stderr=True)
+                except ffmpeg.Error:
+                    # If conversion fails, try using the original file directly
+                    audio_path = audio_download_path
+            else:
+                # Extract audio from video file
+                input_video_path = temp_path / f"{unique_id}_input_video.mp4"
+                print(f"📥 Saving video file for audio extraction...")
+                async with aiofiles.open(input_video_path, 'wb') as f:
+                    content = await video_file.read()  # type: ignore[union-attr]
+                    await f.write(content)
+                print(f"✅ Video saved: {input_video_path.stat().st_size} bytes")
+
+                print(f"🎵 Extracting audio from video...")
+                video_processor.extract_audio(input_video_path, audio_path)
+                print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
+
+            # Parse captions to get word-level timing
+            print(f"📝 Parsing captions...")
+            word_timings = parse_caption_file(caption_path)
+            print(f"✅ Parsed {len(word_timings)} words from captions")
+
+            if not word_timings:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No words found in caption file"
+                )
+
+            # Extract just the words for style generation (cast to str for type safety)
+            words: list[str] = [str(wt["word"]) for wt in word_timings]
+
+            # Generate styles for each word
+            print(f"🎨 Generating styles for {len(words)} words...")
+            style_engine = StyleEngine()
+            styles = style_engine.generate_styles_for_words(words)
+            print(f"✅ Styles generated")
+
+            # Generate frames for each word
+            print(f"🖼️ Generating frames...")
+            dimensions = FrameDimensions.from_format_string(output_format)
+            frame_generator = FrameGenerator(default_dimensions=dimensions)
+            images = frame_generator.generate_frames_for_words(words, styles, dimensions)
+            print(f"✅ Generated {len(images)} frames")
+
+            # Create frames with timing for video assembly
+            timings: list[dict[str, float]] = [
+                {"start_time": float(wt["start_time"]), "end_time": float(wt["end_time"])}
+                for wt in word_timings
+            ]
+            frames_with_timing = create_frames_with_timing(images, timings)
+
+            # Assemble video with audio
+            print(f"🎬 Assembling video...")
+            video_assembler = VideoAssembler()
+            from typing import cast
+            from video_assembler import OutputFormat
+            output_format_literal = cast(OutputFormat, output_format)
+            video_assembler.assemble(
+                frames_with_timing,
+                audio_path,
+                output_video_path,
+                output_format_literal
+            )
+            print(f"✅ Video assembled: {output_video_path.stat().st_size} bytes")
+
+            # Construct download URL
+            if "onrender.com" in str(request.url.netloc):
+                base_url = f"https://{request.url.netloc}"
+            else:
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
+
+            download_url = f"{base_url}/public/{unique_id}_artistic.mp4"
+
+            return ArtisticVideoResponse(
+                status="success",
+                download_url=download_url,
+                message=f"Artistic video generated successfully with {len(words)} words"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
