@@ -246,6 +246,7 @@ class FrameGenerator:
         dimensions: FrameDimensions,
         text_bbox: tuple[int, int, int, int],
         style: FrameStyle,
+        rotated_size: tuple[int, int] | None = None,
     ) -> tuple[int, int]:
         """
         Calculate the position to draw text based on style settings.
@@ -254,12 +255,20 @@ class FrameGenerator:
             dimensions: Frame dimensions.
             text_bbox: Bounding box of text (left, top, right, bottom).
             style: Frame style with position information.
+            rotated_size: If provided, the (width, height) of rotated text layer
+                         to use for bounds calculation instead of text_bbox.
 
         Returns:
             Tuple of (x, y) pixel coordinates for text anchor point.
         """
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
+
+        # For bounds checking, use rotated size if provided
+        if rotated_size is not None:
+            bounds_width, bounds_height = rotated_size
+        else:
+            bounds_width, bounds_height = text_width, text_height
 
         # Get position percentages from style
         pos_x_pct, pos_y_pct = style.text_position_xy
@@ -269,13 +278,13 @@ class FrameGenerator:
         center_y = int(dimensions.height * pos_y_pct)
 
         # Adjust to top-left corner for PIL's text drawing
-        x = center_x - text_width // 2
-        y = center_y - text_height // 2
+        x = center_x - bounds_width // 2
+        y = center_y - bounds_height // 2
 
         # Ensure text stays within frame bounds with padding
         padding = 20
-        x = max(padding, min(x, dimensions.width - text_width - padding))
-        y = max(padding, min(y, dimensions.height - text_height - padding))
+        x = max(padding, min(x, dimensions.width - bounds_width - padding))
+        y = max(padding, min(y, dimensions.height - bounds_height - padding))
 
         return x, y
 
@@ -355,6 +364,71 @@ class FrameGenerator:
         rgb = hex_to_rgb(color)
         draw.polygon(points, fill=rgb)
 
+    def _create_rotated_highlight_layer(
+        self,
+        word: str,
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        text_bbox: tuple[int, int, int, int],
+        style: FrameStyle,
+        rotated_size: tuple[int, int],
+    ) -> Image.Image:
+        """
+        Create a rotated highlight layer for text.
+
+        Args:
+            word: The text to highlight.
+            font: PIL font object.
+            text_bbox: Bounding box of text (left, top, right, bottom) relative to (0,0).
+            style: Frame style with highlight settings.
+            rotated_size: Size of the rotated text layer.
+
+        Returns:
+            PIL Image with rotated highlight (RGBA with transparency).
+        """
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+        padding = style.highlight_padding
+
+        # Create layer sized for the highlight box
+        layer_width = text_width + padding * 2
+        layer_height = text_height + padding * 2
+
+        # Add extra space for rotation
+        max_dim = int((layer_width**2 + layer_height**2) ** 0.5) + 20
+        highlight_layer = Image.new("RGBA", (max_dim, max_dim), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(highlight_layer)
+
+        # Calculate centered position for highlight
+        center_x = max_dim // 2
+        center_y = max_dim // 2
+        box_left = center_x - text_width // 2 - padding
+        box_top = center_y - text_height // 2 - padding
+        box_right = center_x + text_width // 2 + padding
+        box_bottom = center_y + text_height // 2 + padding
+
+        rgb = hex_to_rgb(style.highlight_color) if style.highlight_color else (128, 128, 128)
+
+        if style.highlight_style == HighlightStyle.BOX:
+            draw.rectangle([box_left, box_top, box_right, box_bottom], fill=rgb)
+        elif style.highlight_style == HighlightStyle.BRUSH:
+            # Create parallelogram
+            skew = int((box_bottom - box_top) * 0.25)
+            points = [
+                (box_left + skew, box_top),
+                (box_right + skew, box_top),
+                (box_right, box_bottom),
+                (box_left, box_bottom),
+            ]
+            draw.polygon(points, fill=rgb)
+
+        # Rotate the highlight layer
+        if style.text_rotation != 0:
+            highlight_layer = highlight_layer.rotate(
+                style.text_rotation, resample=Image.Resampling.BICUBIC, expand=True
+            )
+
+        return highlight_layer
+
     def _create_shadow_layer(
         self,
         word: str,
@@ -403,6 +477,54 @@ class FrameGenerator:
             shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
 
         return shadow_layer
+
+    def _create_rotated_text_layer(
+        self,
+        word: str,
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        text_color: tuple[int, int, int] | tuple[int, int, int, int],
+        rotation: float,
+    ) -> Image.Image:
+        """
+        Create a rotated text layer on transparent background.
+
+        Args:
+            word: The text to render.
+            font: PIL font object.
+            text_color: RGB or RGBA color tuple for text.
+            rotation: Rotation angle in degrees (positive = counter-clockwise).
+
+        Returns:
+            PIL Image with rotated text (RGBA with transparency).
+        """
+        # Create a temporary image to measure text size
+        temp_img = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        temp_draw = ImageDraw.Draw(temp_img)
+        text_bbox = temp_draw.textbbox((0, 0), word, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        # Add padding for rotation (text expands when rotated)
+        # Use diagonal as maximum possible expansion
+        max_dim = int((text_width**2 + text_height**2) ** 0.5) + 20
+        layer_size = (max_dim, max_dim)
+
+        # Create transparent layer for text
+        text_layer = Image.new("RGBA", layer_size, (0, 0, 0, 0))
+        text_draw = ImageDraw.Draw(text_layer)
+
+        # Draw text centered in the layer
+        text_x = (layer_size[0] - text_width) // 2 - text_bbox[0]
+        text_y = (layer_size[1] - text_height) // 2 - text_bbox[1]
+        text_draw.text((text_x, text_y), word, font=font, fill=text_color)
+
+        # Rotate the layer
+        if rotation != 0:
+            text_layer = text_layer.rotate(
+                rotation, resample=Image.Resampling.BICUBIC, expand=True
+            )
+
+        return text_layer
 
     def _create_glow_layer(
         self,
@@ -506,59 +628,150 @@ class FrameGenerator:
             int(text_bbox_raw[3]),
         )
 
-        # Calculate position
-        x, y = self._calculate_text_position(dimensions, text_bbox, style)
-
         # Get font color
         font_color = hex_to_rgb(style.font_color)
 
-        # Draw highlight behind text if enabled
-        if style.highlight_style != HighlightStyle.NONE and style.highlight_color:
-            if style.highlight_style == HighlightStyle.BOX:
-                self._draw_highlight_box(
-                    draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
-                )
-            elif style.highlight_style == HighlightStyle.BRUSH:
-                self._draw_highlight_brush(
-                    draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
-                )
+        # Check if rotation is enabled (non-zero)
+        rotation = style.text_rotation
+        use_rotation = abs(rotation) > 0.1  # Small threshold to avoid unnecessary rotation
 
-        # Apply drop shadow effect if enabled
-        if style.shadow_enabled:
-            shadow_layer = self._create_shadow_layer(
-                word=word,
-                font=font,
-                text_x=x,
-                text_y=y,
-                shadow_offset=style.shadow_offset,
-                shadow_blur=style.shadow_blur,
-                shadow_color=style.shadow_color,
-                dimensions=dimensions,
+        if use_rotation:
+            # Create rotated text layer to determine final size
+            rotated_text = self._create_rotated_text_layer(
+                word, font, (*font_color, 255), rotation
             )
-            # Composite shadow onto background (convert to RGBA for compositing)
+            rotated_size = rotated_text.size
+
+            # Calculate position based on rotated size for proper bounds checking
+            x, y = self._calculate_text_position(
+                dimensions, text_bbox, style, rotated_size
+            )
+
+            # Convert image to RGBA for compositing
             image = image.convert("RGBA")
-            image = Image.alpha_composite(image, shadow_layer)
 
-        # Apply glow effect if enabled
-        if style.glow_enabled:
-            glow_layer = self._create_glow_layer(
-                word=word,
-                font=font,
-                text_x=x,
-                text_y=y,
-                glow_radius=style.glow_radius,
-                glow_color=style.glow_color,
-                dimensions=dimensions,
+            # Draw highlight behind text if enabled (also rotated)
+            if style.highlight_style != HighlightStyle.NONE and style.highlight_color:
+                highlight_layer = self._create_rotated_highlight_layer(
+                    word, font, text_bbox, style, rotated_size
+                )
+                # Create full-size layer and paste the highlight
+                full_highlight = Image.new(
+                    "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
+                )
+                paste_x = x + (rotated_size[0] - highlight_layer.width) // 2
+                paste_y = y + (rotated_size[1] - highlight_layer.height) // 2
+                full_highlight.paste(highlight_layer, (paste_x, paste_y), highlight_layer)
+                image = Image.alpha_composite(image, full_highlight)
+
+            # Apply drop shadow effect if enabled (rotated)
+            if style.shadow_enabled:
+                shadow_color = hex_to_rgb(style.shadow_color)
+                shadow_layer = self._create_rotated_text_layer(
+                    word, font, (*shadow_color, 180), rotation
+                )
+                if style.shadow_blur > 0:
+                    shadow_layer = shadow_layer.filter(
+                        ImageFilter.GaussianBlur(style.shadow_blur)
+                    )
+                # Create full-size layer and paste the shadow with offset
+                full_shadow = Image.new(
+                    "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
+                )
+                shadow_x = x + style.shadow_offset[0]
+                shadow_y = y + style.shadow_offset[1]
+                full_shadow.paste(shadow_layer, (shadow_x, shadow_y), shadow_layer)
+                image = Image.alpha_composite(image, full_shadow)
+
+            # Apply glow effect if enabled (rotated)
+            if style.glow_enabled:
+                glow_color = hex_to_rgb(style.glow_color)
+                # Create thicker glow base by drawing multiple offset copies
+                glow_base = self._create_rotated_text_layer(
+                    word, font, (*glow_color, 255), rotation
+                )
+                # Expand glow with additional offset renders
+                expanded_size = (
+                    glow_base.width + 8,
+                    glow_base.height + 8,
+                )
+                glow_layer = Image.new("RGBA", expanded_size, (0, 0, 0, 0))
+                for dx in range(-2, 3):
+                    for dy in range(-2, 3):
+                        glow_layer.paste(
+                            glow_base, (4 + dx, 4 + dy), glow_base
+                        )
+                if style.glow_radius > 0:
+                    blur_amount = style.glow_radius * 1.5
+                    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(blur_amount))
+                # Create full-size layer and paste the glow
+                full_glow = Image.new(
+                    "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
+                )
+                glow_x = x - 4
+                glow_y = y - 4
+                full_glow.paste(glow_layer, (glow_x, glow_y), glow_layer)
+                image = Image.alpha_composite(image, full_glow)
+
+            # Paste the rotated text on top
+            full_text = Image.new(
+                "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
             )
-            # Composite glow onto image
-            if image.mode != "RGBA":
-                image = image.convert("RGBA")
-            image = Image.alpha_composite(image, glow_layer)
+            full_text.paste(rotated_text, (x, y), rotated_text)
+            image = Image.alpha_composite(image, full_text)
 
-        # Draw the main text on top
-        # Need to recreate draw context if image was converted
-        draw = ImageDraw.Draw(image)
-        draw.text((x, y), word, font=font, fill=font_color)
+        else:
+            # No rotation - use original direct drawing approach
+            # Calculate position
+            x, y = self._calculate_text_position(dimensions, text_bbox, style)
+
+            # Draw highlight behind text if enabled
+            if style.highlight_style != HighlightStyle.NONE and style.highlight_color:
+                if style.highlight_style == HighlightStyle.BOX:
+                    self._draw_highlight_box(
+                        draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
+                    )
+                elif style.highlight_style == HighlightStyle.BRUSH:
+                    self._draw_highlight_brush(
+                        draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
+                    )
+
+            # Apply drop shadow effect if enabled
+            if style.shadow_enabled:
+                shadow_layer = self._create_shadow_layer(
+                    word=word,
+                    font=font,
+                    text_x=x,
+                    text_y=y,
+                    shadow_offset=style.shadow_offset,
+                    shadow_blur=style.shadow_blur,
+                    shadow_color=style.shadow_color,
+                    dimensions=dimensions,
+                )
+                # Composite shadow onto background (convert to RGBA for compositing)
+                image = image.convert("RGBA")
+                image = Image.alpha_composite(image, shadow_layer)
+
+            # Apply glow effect if enabled
+            if style.glow_enabled:
+                glow_layer = self._create_glow_layer(
+                    word=word,
+                    font=font,
+                    text_x=x,
+                    text_y=y,
+                    glow_radius=style.glow_radius,
+                    glow_color=style.glow_color,
+                    dimensions=dimensions,
+                )
+                # Composite glow onto image
+                if image.mode != "RGBA":
+                    image = image.convert("RGBA")
+                image = Image.alpha_composite(image, glow_layer)
+
+            # Draw the main text on top
+            # Need to recreate draw context if image was converted
+            draw = ImageDraw.Draw(image)
+            draw.text((x, y), word, font=font, fill=font_color)
 
         # Convert back to RGB for final output
         if image.mode == "RGBA":
