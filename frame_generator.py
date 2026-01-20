@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from color_utils import hex_to_rgb
 from font_registry import get_font_path
@@ -355,6 +355,106 @@ class FrameGenerator:
         rgb = hex_to_rgb(color)
         draw.polygon(points, fill=rgb)
 
+    def _create_shadow_layer(
+        self,
+        word: str,
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        text_x: int,
+        text_y: int,
+        shadow_offset: tuple[int, int],
+        shadow_blur: int,
+        shadow_color: str,
+        dimensions: "FrameDimensions",
+    ) -> Image.Image:
+        """
+        Create a shadow layer for text.
+
+        Args:
+            word: The text to create shadow for.
+            font: PIL font object.
+            text_x: X position of the original text.
+            text_y: Y position of the original text.
+            shadow_offset: (x, y) offset for shadow in pixels.
+            shadow_blur: Blur radius for shadow in pixels.
+            shadow_color: Hex color for shadow.
+            dimensions: Frame dimensions.
+
+        Returns:
+            PIL Image with shadow layer (RGBA with transparency).
+        """
+        # Create transparent layer for shadow
+        shadow_layer = Image.new(
+            "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
+        )
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+
+        # Draw shadow text at offset position
+        shadow_x = text_x + shadow_offset[0]
+        shadow_y = text_y + shadow_offset[1]
+
+        rgb = hex_to_rgb(shadow_color)
+        # Use semi-transparent shadow for softer effect
+        shadow_rgba = (*rgb, 180)
+
+        shadow_draw.text((shadow_x, shadow_y), word, font=font, fill=shadow_rgba)
+
+        # Apply blur if specified
+        if shadow_blur > 0:
+            shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
+
+        return shadow_layer
+
+    def _create_glow_layer(
+        self,
+        word: str,
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        text_x: int,
+        text_y: int,
+        glow_radius: int,
+        glow_color: str,
+        dimensions: "FrameDimensions",
+    ) -> Image.Image:
+        """
+        Create a glow layer for text.
+
+        Args:
+            word: The text to create glow for.
+            font: PIL font object.
+            text_x: X position of the original text.
+            text_y: Y position of the original text.
+            glow_radius: Radius of the glow effect in pixels.
+            glow_color: Hex color for glow.
+            dimensions: Frame dimensions.
+
+        Returns:
+            PIL Image with glow layer (RGBA with transparency).
+        """
+        # Create transparent layer for glow
+        glow_layer = Image.new(
+            "RGBA", (dimensions.width, dimensions.height), (0, 0, 0, 0)
+        )
+        glow_draw = ImageDraw.Draw(glow_layer)
+
+        rgb = hex_to_rgb(glow_color)
+        # Use full opacity for initial glow drawing, blur will spread and fade
+        glow_rgba = (*rgb, 255)
+
+        # Draw the text multiple times with slight offsets to create thicker base
+        # This creates a bolder glow effect
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                glow_draw.text(
+                    (text_x + dx, text_y + dy), word, font=font, fill=glow_rgba
+                )
+
+        # Apply significant blur to create the glow halo
+        if glow_radius > 0:
+            # Use stronger blur for glow effect (multiply by 1.5 for more spread)
+            blur_amount = glow_radius * 1.5
+            glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(blur_amount))
+
+        return glow_layer
+
     def generate_frame(
         self,
         word: str,
@@ -423,9 +523,46 @@ class FrameGenerator:
                     draw, x, y, text_bbox, style.highlight_color, style.highlight_padding
                 )
 
-        # Draw the text
-        # Note: Rotation, shadows, and glow are handled in later user stories
+        # Apply drop shadow effect if enabled
+        if style.shadow_enabled:
+            shadow_layer = self._create_shadow_layer(
+                word=word,
+                font=font,
+                text_x=x,
+                text_y=y,
+                shadow_offset=style.shadow_offset,
+                shadow_blur=style.shadow_blur,
+                shadow_color=style.shadow_color,
+                dimensions=dimensions,
+            )
+            # Composite shadow onto background (convert to RGBA for compositing)
+            image = image.convert("RGBA")
+            image = Image.alpha_composite(image, shadow_layer)
+
+        # Apply glow effect if enabled
+        if style.glow_enabled:
+            glow_layer = self._create_glow_layer(
+                word=word,
+                font=font,
+                text_x=x,
+                text_y=y,
+                glow_radius=style.glow_radius,
+                glow_color=style.glow_color,
+                dimensions=dimensions,
+            )
+            # Composite glow onto image
+            if image.mode != "RGBA":
+                image = image.convert("RGBA")
+            image = Image.alpha_composite(image, glow_layer)
+
+        # Draw the main text on top
+        # Need to recreate draw context if image was converted
+        draw = ImageDraw.Draw(image)
         draw.text((x, y), word, font=font, fill=font_color)
+
+        # Convert back to RGB for final output
+        if image.mode == "RGBA":
+            image = image.convert("RGB")
 
         return image
 
