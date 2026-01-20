@@ -1,18 +1,27 @@
-# Karaoke Subtitle API - Complete Documentation 📚
+# Karaoke Subtitle API - Complete Documentation
 
 ## Table of Contents
 - [Overview](#overview)
 - [Base URL](#base-url)
 - [Endpoints](#endpoints)
+  - [Karaoke Subtitle Endpoints](#karaoke-subtitle-endpoints)
+  - [Artistic Video Endpoints](#artistic-video-endpoints)
+  - [Font Management Endpoints](#font-management-endpoints)
+  - [Utility Endpoints](#utility-endpoints)
 - [Request Parameters](#request-parameters)
 - [Subtitle Position Guide](#subtitle-position-guide)
+- [Output Format Guide](#output-format-guide)
 - [Response Format](#response-format)
 - [Error Handling](#error-handling)
 - [Code Examples](#code-examples)
 
 ## Overview
 
-The Karaoke Subtitle API generates karaoke-style subtitles for videos using OpenAI's Whisper for transcription and FFmpeg for video processing. The API creates syllable-by-syllable timing and burns subtitles directly into the video.
+The Karaoke Subtitle API provides two main features:
+
+1. **Karaoke Subtitles**: Generates karaoke-style subtitles for videos using OpenAI's Whisper for transcription and FFmpeg for video processing. Creates syllable-by-syllable timing and burns subtitles directly into the video.
+
+2. **Artistic Word Videos**: Creates scroll-stopping social media videos with dynamic typography, where each word appears on its own artistic frame with varying fonts, colors, positions, backgrounds (solid/gradient), and effects (shadows, glow, highlights).
 
 ## Base URL
 
@@ -21,31 +30,124 @@ The Karaoke Subtitle API generates karaoke-style subtitles for videos using Open
 
 ## Endpoints
 
-### 1. Generate Karaoke Subtitles (JSON Response)
+### Karaoke Subtitle Endpoints
+
+#### 1. Generate Karaoke Subtitles (JSON Response)
 
 **Endpoint**: `POST /generate-karaoke-subtitles`
 
 Main endpoint that returns a JSON response with the download URL and processing status.
 
-### 2. Generate Karaoke Subtitles (Simple Response)
+#### 2. Generate Karaoke Subtitles (Simple Response)
 
 **Endpoint**: `POST /generate-karaoke-subtitles-simple`
 
 Alternative endpoint that returns only the download URL as plain text.
 
-### 3. Health Check
+### Artistic Video Endpoints
+
+#### 3. Generate Artistic Video (URL-based)
+
+**Endpoint**: `POST /generate-artistic-video`
+
+Creates artistic word-by-word videos with dynamic typography using URLs to source files.
+
+**Request Body (JSON)**:
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `caption_url` | string (URL) | Optional | - | URL to .ass or .srt caption file |
+| `audio_url` | string (URL) | Optional* | - | URL to audio file (.mp3, .wav) |
+| `video_url` | string (URL) | Optional* | - | URL to video file (audio will be extracted) |
+| `output_format` | string | Optional | `"9:16"` | Output format: `9:16`, `1:1`, or `16:9` |
+| `headers` | object | Optional | - | Extra request headers for fetching URLs |
+| `base64_urls` | boolean | Optional | `false` | If true, URLs are base64-encoded |
+
+*At least one of `audio_url` or `video_url` must be provided.
+
+**Notes**:
+- If no `caption_url` is provided, Whisper transcription will be used to generate word-level timing automatically.
+- If `video_url` is provided instead of `audio_url`, audio will be extracted from the video.
+
+**Response**: `ArtisticVideoResponse` (see [Response Format](#artistic-video-response))
+
+#### 4. Generate Artistic Video (File Upload)
+
+**Endpoint**: `POST /generate-artistic-video-upload`
+
+Creates artistic word-by-word videos using file uploads instead of URLs.
+
+**Request Body (multipart/form-data)**:
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `caption_file` | file | Optional | - | .ass or .srt caption file |
+| `audio_file` | file | Optional* | - | Audio file (.mp3, .wav) |
+| `video_file` | file | Optional* | - | Video file (audio will be extracted) |
+| `output_format` | string (form) | Optional | `"9:16"` | Output format: `9:16`, `1:1`, or `16:9` |
+
+*At least one of `audio_file` or `video_file` must be provided.
+
+**Notes**:
+- If no `caption_file` is provided, Whisper transcription will be used to generate word-level timing automatically.
+- If `video_file` is provided instead of `audio_file`, audio will be extracted from the video.
+
+**Response**: `ArtisticVideoResponse` (see [Response Format](#artistic-video-response))
+
+### Font Management Endpoints
+
+#### 5. Upload Custom Font
+
+**Endpoint**: `POST /upload-font`
+
+Upload a custom TTF font for use in artistic video generation.
+
+**Request Body (multipart/form-data)**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `font_file` | file | Required | TTF or OTF font file to upload |
+
+**Validations**:
+- File must be a valid TTF or OTF font (magic bytes validated)
+- Maximum file size: 10MB
+- Filename is sanitized for security
+
+**Response**: `FontUploadResponse`
+```json
+{
+  "status": "success",
+  "font_name": "MyCustomFont",
+  "message": "Font 'MyCustomFont' uploaded successfully and is now available for use"
+}
+```
+
+#### 6. List Available Fonts
+
+**Endpoint**: `GET /fonts`
+
+List all available fonts for artistic video generation, including bundled fonts and user-uploaded fonts.
+
+**Response**: `FontListResponse`
+```json
+{
+  "fonts": ["BebasNeue", "Oswald", "Anton", "MyCustomFont", ...],
+  "count": 26
+}
+```
+
+### Utility Endpoints
+
+#### 7. Health Check
 
 **Endpoint**: `GET /health`
 
 Returns API health status.
 
-### 4. Root Information
+#### 8. Root Information
 
 **Endpoint**: `GET /`
 
 Returns basic API information and available endpoints.
 
-### 5. Test Endpoint
+#### 9. Test Endpoint
 
 **Endpoint**: `GET /test`
 
@@ -103,6 +205,29 @@ margin_from_bottom = 10 + ((1.0 - (subtitle_position / 2)) * 100)
 | **Square Videos** | `0.75` | Balanced positioning |
 | **Music Videos** | `0.6` - `0.8` | Avoids lyrics or artist info |
 
+## Output Format Guide
+
+The `output_format` parameter (for artistic video endpoints) controls the dimensions and aspect ratio of the generated video.
+
+### Supported Output Formats
+
+| Format | Dimensions | Aspect Ratio | Best For |
+|--------|------------|--------------|----------|
+| `9:16` | 1080x1920 | Portrait | TikTok, Instagram Reels, YouTube Shorts |
+| `1:1` | 1080x1080 | Square | Instagram Feed, Facebook |
+| `16:9` | 1920x1080 | Landscape | YouTube, Traditional video |
+
+### Format Selection Guide
+
+| Platform | Recommended Format | Notes |
+|----------|-------------------|-------|
+| **TikTok** | `9:16` | Portrait is required |
+| **Instagram Reels** | `9:16` | Portrait for maximum engagement |
+| **Instagram Feed** | `1:1` | Square works best in feed |
+| **YouTube Shorts** | `9:16` | Portrait for Shorts |
+| **YouTube** | `16:9` | Traditional landscape |
+| **Facebook** | `1:1` or `16:9` | Both work well |
+
 ## Response Format
 
 ### Successful Response (JSON Endpoint)
@@ -119,6 +244,35 @@ margin_from_bottom = 10 + ((1.0 - (subtitle_position / 2)) * 100)
 
 ```
 https://your-domain.com/public/abc12345_final.mp4
+```
+
+### Artistic Video Response
+
+```json
+{
+  "status": "success",
+  "download_url": "https://your-domain.com/public/abc12345_artistic.mp4",
+  "message": "Artistic video generated successfully with 42 words"
+}
+```
+
+### Font Upload Response
+
+```json
+{
+  "status": "success",
+  "font_name": "MyCustomFont",
+  "message": "Font 'MyCustomFont' uploaded successfully and is now available for use"
+}
+```
+
+### Font List Response
+
+```json
+{
+  "fonts": ["BebasNeue", "Oswald", "Anton", "ArchivoBold", "PassionOne", ...],
+  "count": 25
+}
 ```
 
 ### Error Response
@@ -288,7 +442,217 @@ async function generateKaraokeSubtitles(videoUrl, subtitlePosition = 0.75) {
 generateKaraokeSubtitles('https://example.com/video.mp4', 0.75);
 ```
 
+### Artistic Video Examples
+
+#### cURL - Generate Artistic Video with Caption URL
+
+```bash
+curl -X POST "https://your-api-domain.com/generate-artistic-video" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "caption_url": "https://example.com/captions.srt",
+    "audio_url": "https://example.com/voiceover.mp3",
+    "output_format": "9:16"
+  }'
+```
+
+#### cURL - Generate Artistic Video without Captions (Whisper Transcription)
+
+```bash
+curl -X POST "https://your-api-domain.com/generate-artistic-video" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audio_url": "https://example.com/voiceover.mp3",
+    "output_format": "9:16"
+  }'
+```
+
+#### cURL - Generate Artistic Video from Video URL
+
+```bash
+curl -X POST "https://your-api-domain.com/generate-artistic-video" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "https://example.com/video.mp4",
+    "output_format": "1:1"
+  }'
+```
+
+#### cURL - Generate Artistic Video with File Upload
+
+```bash
+curl -X POST "https://your-api-domain.com/generate-artistic-video-upload" \
+  -F "caption_file=@captions.srt" \
+  -F "audio_file=@voiceover.mp3" \
+  -F "output_format=9:16"
+```
+
+#### cURL - Upload Custom Font
+
+```bash
+curl -X POST "https://your-api-domain.com/upload-font" \
+  -F "font_file=@MyCustomFont.ttf"
+```
+
+#### cURL - List Available Fonts
+
+```bash
+curl "https://your-api-domain.com/fonts"
+```
+
+#### Python - Generate Artistic Video
+
+```python
+import requests
+
+# With caption URL
+response = requests.post(
+    "https://your-api-domain.com/generate-artistic-video",
+    json={
+        "caption_url": "https://example.com/captions.srt",
+        "audio_url": "https://example.com/voiceover.mp3",
+        "output_format": "9:16"
+    }
+)
+
+result = response.json()
+print(f"Status: {result['status']}")
+print(f"Download URL: {result['download_url']}")
+print(f"Message: {result['message']}")
+```
+
+#### Python - Generate Artistic Video without Captions
+
+```python
+import requests
+
+# Whisper will transcribe the audio automatically
+response = requests.post(
+    "https://your-api-domain.com/generate-artistic-video",
+    json={
+        "audio_url": "https://example.com/voiceover.mp3",
+        "output_format": "9:16"
+    }
+)
+
+if response.status_code == 200:
+    result = response.json()
+    print(f"Download: {result['download_url']}")
+else:
+    print(f"Error: {response.json()['detail']}")
+```
+
+#### Python - Upload File with multipart/form-data
+
+```python
+import requests
+
+# Upload files directly
+with open("captions.srt", "rb") as caption_f, open("voiceover.mp3", "rb") as audio_f:
+    response = requests.post(
+        "https://your-api-domain.com/generate-artistic-video-upload",
+        files={
+            "caption_file": ("captions.srt", caption_f, "text/plain"),
+            "audio_file": ("voiceover.mp3", audio_f, "audio/mpeg"),
+        },
+        data={
+            "output_format": "9:16"
+        }
+    )
+
+result = response.json()
+print(f"Download URL: {result['download_url']}")
+```
+
+#### Python - Upload Custom Font
+
+```python
+import requests
+
+with open("MyCustomFont.ttf", "rb") as font_f:
+    response = requests.post(
+        "https://your-api-domain.com/upload-font",
+        files={
+            "font_file": ("MyCustomFont.ttf", font_f, "font/ttf"),
+        }
+    )
+
+result = response.json()
+print(f"Font name: {result['font_name']}")
+# Use this font name in future requests
+```
+
+#### Python - List Available Fonts
+
+```python
+import requests
+
+response = requests.get("https://your-api-domain.com/fonts")
+result = response.json()
+
+print(f"Available fonts ({result['count']}):")
+for font in result['fonts']:
+    print(f"  - {font}")
+```
+
+#### JavaScript/Node.js - Generate Artistic Video
+
+```javascript
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
+
+// URL-based request
+async function generateArtisticVideo(audioUrl, captionUrl = null) {
+  try {
+    const response = await axios.post(
+      'https://your-api-domain.com/generate-artistic-video',
+      {
+        audio_url: audioUrl,
+        caption_url: captionUrl,
+        output_format: '9:16'
+      },
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+
+    console.log('Download URL:', response.data.download_url);
+    return response.data.download_url;
+  } catch (error) {
+    console.error('Error:', error.response?.data?.detail || error.message);
+    throw error;
+  }
+}
+
+// File upload request
+async function uploadAndGenerateVideo(captionPath, audioPath) {
+  const form = new FormData();
+  form.append('caption_file', fs.createReadStream(captionPath));
+  form.append('audio_file', fs.createReadStream(audioPath));
+  form.append('output_format', '9:16');
+
+  try {
+    const response = await axios.post(
+      'https://your-api-domain.com/generate-artistic-video-upload',
+      form,
+      {
+        headers: form.getHeaders()
+      }
+    );
+
+    console.log('Download URL:', response.data.download_url);
+    return response.data.download_url;
+  } catch (error) {
+    console.error('Error:', error.response?.data?.detail || error.message);
+    throw error;
+  }
+}
+```
+
 ## Processing Pipeline
+
+### Karaoke Subtitle Pipeline
 
 1. **Video Download** - Downloads video from provided URL
 2. **Audio Extraction** - Extracts audio using FFmpeg
@@ -298,15 +662,50 @@ generateKaraokeSubtitles('https://example.com/video.mp4', 0.75);
 6. **Video Processing** - Burns subtitles into video using FFmpeg
 7. **File Serving** - Returns download URL for processed video
 
+### Artistic Video Pipeline
+
+1. **File Acquisition** - Downloads files from URLs or receives file uploads
+2. **Audio Handling** - Uses provided audio or extracts from video using FFmpeg
+3. **Word Timing** - Parses caption file (.ass/.srt) or transcribes with Whisper
+4. **Style Generation** - Generates random but cohesive styles for each word (fonts, colors, positions, effects)
+5. **Frame Generation** - Creates individual image frames using Pillow with:
+   - Solid or gradient backgrounds
+   - Custom fonts from bundled or uploaded fonts
+   - Text positioning (center, top-third, bottom-third, left-offset, right-offset)
+   - Text rotation (-15 to +15 degrees)
+   - Highlight boxes/parallelograms behind text
+   - Drop shadows and glow effects
+6. **Video Assembly** - Combines frames into video synced with audio using FFmpeg
+7. **File Serving** - Returns download URL for generated video
+
 ## Technical Specifications
 
+### Karaoke Subtitle Output
 - **Video Output**: H.264 encoded MP4
 - **Audio**: AAC, 320k bitrate
 - **Quality**: CRF=18 (near-lossless)
 - **Subtitle Format**: Advanced SubStation Alpha (.ass)
-- **Transcription**: OpenAI Whisper "tiny" model
+- **Transcription**: OpenAI Whisper "base" model
 - **Processing**: Temporary file cleanup
 - **Concurrent Requests**: Supported with unique IDs
+
+### Artistic Video Output
+- **Video Output**: H.264 encoded MP4, optimized for web (faststart, yuv420p)
+- **Audio**: AAC encoded
+- **Frame Dimensions**:
+  - Portrait (9:16): 1080x1920
+  - Square (1:1): 1080x1080
+  - Landscape (16:9): 1920x1080
+- **Frame Generation**: Pillow (PIL) with RGBA support
+- **Font Size Range**: 80-200px (auto-scaled for longer words)
+- **Supported Caption Formats**: .ass, .srt
+- **Transcription**: OpenAI Whisper "base" model (when no captions provided)
+
+### Font Upload Specifications
+- **Supported Formats**: TTF, OTF
+- **Maximum File Size**: 10MB
+- **Validation**: Magic bytes verification for security
+- **Filename Sanitization**: Path traversal prevention, special character removal
 
 ## Rate Limits & Performance
 
@@ -329,18 +728,33 @@ generateKaraokeSubtitles('https://example.com/video.mp4', 0.75);
 
 ## Font Support
 
-### Production-Ready Fonts (Linux/Docker/Render)
+### Karaoke Subtitle Fonts
+
+#### Production-Ready Fonts (Linux/Docker/Render)
 - `Liberation Sans` / `Liberation Sans Bold`
 - `DejaVu Sans` / `DejaVu Sans Bold`
 - `Noto Sans`
 - `FreeSans`
 
-### Local Development Fonts (macOS/Windows)
+#### Local Development Fonts (macOS/Windows)
 - `Arial Rounded MT Bold` (default)
 - `Helvetica`
 - `Arial`
 - `Times New Roman`
 - System fonts
+
+### Artistic Video Fonts
+
+The artistic video endpoints use bundled Google Fonts for consistent visual impact across environments. Use the `/fonts` endpoint to list all available fonts.
+
+#### Bundled Fonts (25 fonts)
+- **Bold/Impact**: Bebas Neue, Oswald, Anton, Archivo Black, Passion One, Russo One, Titan One, Black Ops One
+- **Display**: Bangers, Righteous, Fredoka One, Luckiest Guy, Boogaloo, Lobster, Rubik Bold
+- **Handwritten**: Permanent Marker, Pacifico, Caveat, Kaushan Script, Rock Salt, Shadows Into Light
+- **Modern**: Montserrat Bold, Poppins Bold, Quicksand Bold, Raleway Black
+
+#### Custom Font Upload
+Upload your own TTF/OTF fonts via the `/upload-font` endpoint. Uploaded fonts are immediately available for use and will appear in the `/fonts` list.
 
 ## Best Practices
 
