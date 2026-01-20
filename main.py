@@ -95,6 +95,12 @@ class FontUploadResponse(BaseModel):
     message: str = ""
 
 
+class FontListResponse(BaseModel):
+    """Response model for listing available fonts."""
+    fonts: list[str]
+    count: int
+
+
 # TTF magic bytes: The first 4 bytes of a valid TrueType font file
 # Can be: 0x00010000 (TrueType), 0x4F54544F (OpenType 'OTTO'), or 0x74727565 ('true')
 TTF_MAGIC_BYTES = [
@@ -970,6 +976,26 @@ async def upload_font(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading font: {str(e)}")
+
+
+@app.get("/fonts", response_model=FontListResponse)
+async def list_fonts():
+    """
+    List all available fonts for artistic video generation.
+
+    Returns a list of font names that can be used in video generation requests.
+    This includes both bundled fonts and any custom fonts uploaded via /upload-font.
+
+    Returns:
+        FontListResponse with list of font names and count.
+    """
+    font_registry = get_default_registry()
+    fonts = font_registry.get_available_fonts()
+
+    return FontListResponse(
+        fonts=fonts,
+        count=len(fonts)
+    )
 
 
 if __name__ == "__main__":
