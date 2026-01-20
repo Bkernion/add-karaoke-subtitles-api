@@ -9,3 +9,4 @@ ffmpeg-python
 aiofiles
 python-slugify
 jinja2
+Pillow>=10.0.0
