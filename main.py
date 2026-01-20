@@ -17,6 +17,10 @@ import base64
 
 from subtitle_generator import KaraokeSubtitleGenerator
 from video_processor import VideoProcessor
+from caption_parser import parse_caption_file
+from style_engine import StyleEngine
+from frame_generator import FrameGenerator, FrameDimensions
+from video_assembler import VideoAssembler, create_frames_with_timing
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
@@ -311,18 +315,18 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
     """Generate video with subtitles using provided ASS file from HeyGen"""
     try:
         unique_id = str(uuid.uuid4())[:8]
-        
+
         video_processor = VideoProcessor()
         subtitle_generator = KaraokeSubtitleGenerator()  # No whisper model needed
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            
+
             input_video_path = temp_path / f"{unique_id}_input.mp4"
             heygen_ass_path = temp_path / f"{unique_id}_heygen.ass"
             custom_subtitle_path = temp_path / f"{unique_id}_subtitles.ass"
             output_video_path = PUBLIC_DIR / f"{unique_id}_final.mp4"
-            
+
             # Prepare URLs (optional base64 decoding)
             video_url = video_request.video_url
             ass_url = video_request.ass_url
@@ -335,20 +339,20 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
 
             # Download video
             await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
-            
+
             # Download ASS file from HeyGen
             await download_ass_file(str(ass_url), heygen_ass_path, extra_headers=video_request.headers)
             print(f"📥 Downloaded HeyGen ASS file: {heygen_ass_path.stat().st_size} bytes")
-            
+
             # Get video info for proper formatting
             video_info = video_processor.get_video_info(input_video_path)
             print(f"🎥 Video info: {video_info['width']}x{video_info['height']}")
-            
+
             # Parse HeyGen ASS file to extract timing and words
             transcription = subtitle_generator.parse_ass_file(heygen_ass_path)
             print(f"📝 Parsed {len(transcription.get('segments', []))} segments from ASS file")
             print(f"📝 Total text: {transcription.get('text', '')[:100]}...")
-            
+
             # Generate new ASS file with custom formatting using HeyGen's timing
             subtitle_generator.generate_ass_file(
                 transcription,
@@ -363,25 +367,242 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
                 enable_karaoke=True  # Enable karaoke timing for highlight effect
             )
             print(f"✍️ Generated custom ASS file: {custom_subtitle_path.stat().st_size} bytes")
-            
+
             # Burn subtitles with custom formatting
             print(f"🔥 Burning subtitles into video...")
             video_processor.burn_subtitles(input_video_path, custom_subtitle_path, output_video_path)
             print(f"✅ Final video created: {output_video_path.stat().st_size} bytes")
-            
+
             # Construct full URL - force HTTPS for production
             if "onrender.com" in str(request.url.netloc):
                 base_url = f"https://{request.url.netloc}"
             else:
                 base_url = f"{request.url.scheme}://{request.url.netloc}"
-            
+
             download_url = f"{base_url}/public/{unique_id}_final.mp4"
-            
+
             # Return just the URL as plain text (like simple endpoint)
             return Response(content=download_url, media_type="text/plain")
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+
+
+async def download_file(url: str, output_path: Path, extra_headers: Dict[str, str] | None = None) -> None:
+    """Download a file from URL with resilient headers (for caption or audio files)."""
+    headers_primary = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+    }
+    headers_secondary = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) "
+            "Gecko/20100101 Firefox/125.0"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+    }
+
+    if extra_headers:
+        headers_primary.update(extra_headers)
+        headers_secondary.update(extra_headers)
+
+    session = requests.Session()
+    session.trust_env = False
+    req1 = requests.Request("GET", str(url), headers=headers_primary)
+    prepped1 = session.prepare_request(req1)
+    prepped1.url = str(url)
+    response = session.send(prepped1, stream=True, allow_redirects=True, timeout=(10, 120))
+    if response.status_code == 403:
+        try:
+            response.close()
+        except Exception:
+            pass
+        req2 = requests.Request("GET", str(url), headers=headers_secondary)
+        prepped2 = session.prepare_request(req2)
+        prepped2.url = str(url)
+        response = session.send(prepped2, stream=True, allow_redirects=True, timeout=(10, 120))
+    response.raise_for_status()
+
+    async with aiofiles.open(output_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                await f.write(chunk)
+
+
+@app.post("/generate-artistic-video", response_model=ArtisticVideoResponse)
+async def generate_artistic_video(video_request: ArtisticVideoRequest, request: Request):
+    """
+    Generate an artistic word-by-word video with dynamic typography.
+
+    Creates scroll-stopping social media videos where each word appears on its own
+    artistic frame with varying fonts, colors, positions, backgrounds, and effects.
+
+    Accepts caption files (.ass/.srt) via URL and audio via URL.
+    If video_url is provided instead of audio_url, audio will be extracted from it.
+    """
+    try:
+        unique_id = str(uuid.uuid4())[:8]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Decode base64 URLs if needed
+            caption_url = video_request.caption_url
+            audio_url = video_request.audio_url
+            video_url = video_request.video_url
+            if video_request.base64_urls:
+                try:
+                    if caption_url:
+                        caption_url = base64.b64decode(caption_url).decode("utf-8")
+                    if audio_url:
+                        audio_url = base64.b64decode(audio_url).decode("utf-8")
+                    if video_url:
+                        video_url = base64.b64decode(video_url).decode("utf-8")
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid base64 URLs")
+
+            # Validate that we have an audio source
+            if not audio_url and not video_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="At least one of audio_url or video_url must be provided"
+                )
+
+            # Validate that we have a caption source
+            if not caption_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="caption_url is required for this endpoint"
+                )
+
+            # Determine caption file extension from URL
+            caption_ext = ".ass"
+            if caption_url:
+                caption_url_lower = caption_url.lower()
+                if ".srt" in caption_url_lower:
+                    caption_ext = ".srt"
+                elif ".ass" in caption_url_lower or ".ssa" in caption_url_lower:
+                    caption_ext = ".ass"
+
+            caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
+            audio_path = temp_path / f"{unique_id}_audio.wav"
+            output_video_path = PUBLIC_DIR / f"{unique_id}_artistic.mp4"
+
+            # Download caption file
+            print(f"📥 Downloading caption file...")
+            await download_file(str(caption_url), caption_path, extra_headers=video_request.headers)
+            print(f"✅ Caption downloaded: {caption_path.stat().st_size} bytes")
+
+            # Get audio - either download directly or extract from video
+            video_processor = VideoProcessor()
+            if audio_url:
+                # Download audio file directly
+                audio_download_path = temp_path / f"{unique_id}_audio_download.mp3"
+                print(f"📥 Downloading audio file...")
+                await download_file(str(audio_url), audio_download_path, extra_headers=video_request.headers)
+                print(f"✅ Audio downloaded: {audio_download_path.stat().st_size} bytes")
+
+                # Convert to WAV for consistent processing (or use directly if already compatible)
+                # For simplicity, we'll convert to WAV
+                try:
+                    ffmpeg.input(str(audio_download_path)).output(
+                        str(audio_path),
+                        acodec='pcm_s16le',
+                        ac=1,
+                        ar='16000'
+                    ).overwrite_output().run(capture_stdout=True, capture_stderr=True)
+                except ffmpeg.Error as e:
+                    # If conversion fails, try using the original file directly
+                    audio_path = audio_download_path
+            else:
+                # Extract audio from video
+                input_video_path = temp_path / f"{unique_id}_input_video.mp4"
+                print(f"📥 Downloading video for audio extraction...")
+                await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
+                print(f"✅ Video downloaded: {input_video_path.stat().st_size} bytes")
+
+                print(f"🎵 Extracting audio from video...")
+                video_processor.extract_audio(input_video_path, audio_path)
+                print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
+
+            # Parse captions to get word-level timing
+            print(f"📝 Parsing captions...")
+            word_timings = parse_caption_file(caption_path)
+            print(f"✅ Parsed {len(word_timings)} words from captions")
+
+            if not word_timings:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No words found in caption file"
+                )
+
+            # Extract just the words for style generation (cast to str for type safety)
+            words: list[str] = [str(wt["word"]) for wt in word_timings]
+
+            # Generate styles for each word
+            print(f"🎨 Generating styles for {len(words)} words...")
+            style_engine = StyleEngine()
+            styles = style_engine.generate_styles_for_words(words)
+            print(f"✅ Styles generated")
+
+            # Generate frames for each word
+            print(f"🖼️ Generating frames...")
+            dimensions = FrameDimensions.from_format_string(video_request.output_format)
+            frame_generator = FrameGenerator(default_dimensions=dimensions)
+            images = frame_generator.generate_frames_for_words(words, styles, dimensions)
+            print(f"✅ Generated {len(images)} frames")
+
+            # Create frames with timing for video assembly
+            # Convert to the expected timing format
+            timings: list[dict[str, float]] = [
+                {"start_time": float(wt["start_time"]), "end_time": float(wt["end_time"])}
+                for wt in word_timings
+            ]
+            frames_with_timing = create_frames_with_timing(images, timings)
+
+            # Assemble video with audio
+            print(f"🎬 Assembling video...")
+            video_assembler = VideoAssembler()
+            # Cast output_format to Literal type for type safety
+            from typing import cast
+            from video_assembler import OutputFormat
+            output_format_literal = cast(OutputFormat, video_request.output_format)
+            video_assembler.assemble(
+                frames_with_timing,
+                audio_path,
+                output_video_path,
+                output_format_literal
+            )
+            print(f"✅ Video assembled: {output_video_path.stat().st_size} bytes")
+
+            # Construct download URL
+            if "onrender.com" in str(request.url.netloc):
+                base_url = f"https://{request.url.netloc}"
+            else:
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
+
+            download_url = f"{base_url}/public/{unique_id}_artistic.mp4"
+
+            return ArtisticVideoResponse(
+                status="success",
+                download_url=download_url,
+                message=f"Artistic video generated successfully with {len(words)} words"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
