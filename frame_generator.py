@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from color_utils import hex_to_rgb
 from font_registry import get_font_path
-from style_engine import FrameStyle, TextPosition
+from style_engine import FrameStyle, GradientDirection, TextPosition
 
 
 class AspectRatio(Enum):
@@ -178,6 +178,69 @@ class FrameGenerator:
         rgb = hex_to_rgb(color)
         return Image.new("RGB", (dimensions.width, dimensions.height), rgb)
 
+    def _create_gradient_background(
+        self,
+        dimensions: FrameDimensions,
+        color1: str,
+        color2: str,
+        direction: GradientDirection | None = None,
+    ) -> Image.Image:
+        """
+        Create a gradient background image.
+
+        Args:
+            dimensions: Frame dimensions.
+            color1: First color in hex format (start of gradient).
+            color2: Second color in hex format (end of gradient).
+            direction: Gradient direction. Defaults to vertical if None.
+
+        Returns:
+            PIL Image with gradient background.
+        """
+        if direction is None:
+            direction = GradientDirection.VERTICAL
+
+        rgb1 = hex_to_rgb(color1)
+        rgb2 = hex_to_rgb(color2)
+
+        # Create base image
+        image = Image.new("RGB", (dimensions.width, dimensions.height))
+
+        if direction == GradientDirection.VERTICAL:
+            # Gradient from top to bottom
+            for y in range(dimensions.height):
+                ratio = y / (dimensions.height - 1) if dimensions.height > 1 else 0
+                r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
+                g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
+                b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
+                for x in range(dimensions.width):
+                    image.putpixel((x, y), (r, g, b))
+
+        elif direction == GradientDirection.HORIZONTAL:
+            # Gradient from left to right
+            for x in range(dimensions.width):
+                ratio = x / (dimensions.width - 1) if dimensions.width > 1 else 0
+                r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
+                g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
+                b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
+                for y in range(dimensions.height):
+                    image.putpixel((x, y), (r, g, b))
+
+        elif direction == GradientDirection.DIAGONAL:
+            # Diagonal gradient (top-left to bottom-right)
+            max_distance = dimensions.width + dimensions.height - 2
+            for y in range(dimensions.height):
+                for x in range(dimensions.width):
+                    # Distance from top-left corner
+                    distance = x + y
+                    ratio = distance / max_distance if max_distance > 0 else 0
+                    r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
+                    g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
+                    b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
+                    image.putpixel((x, y), (r, g, b))
+
+        return image
+
     def _calculate_text_position(
         self,
         dimensions: FrameDimensions,
@@ -236,9 +299,20 @@ class FrameGenerator:
         if dimensions is None:
             dimensions = self.default_dimensions
 
-        # Create background (solid color for now - gradient support in US-007)
-        background_color = style.background_colors[0]
-        image = self._create_solid_background(dimensions, background_color)
+        # Create background (solid or gradient based on style)
+        if (
+            style.background_type == "gradient"
+            and len(style.background_colors) >= 2
+        ):
+            image = self._create_gradient_background(
+                dimensions,
+                style.background_colors[0],
+                style.background_colors[1],
+                style.gradient_direction,
+            )
+        else:
+            background_color = style.background_colors[0]
+            image = self._create_solid_background(dimensions, background_color)
 
         # Create drawing context
         draw = ImageDraw.Draw(image)
