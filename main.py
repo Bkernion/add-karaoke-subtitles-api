@@ -449,6 +449,8 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
 
     Accepts caption files (.ass/.srt) via URL and audio via URL.
     If video_url is provided instead of audio_url, audio will be extracted from it.
+    If no caption_url is provided, Whisper will be used to transcribe the audio and
+    extract word-level timing automatically.
     """
     try:
         unique_id = str(uuid.uuid4())[:8]
@@ -478,30 +480,29 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
                     detail="At least one of audio_url or video_url must be provided"
                 )
 
-            # Validate that we have a caption source
-            if not caption_url:
-                raise HTTPException(
-                    status_code=400,
-                    detail="caption_url is required for this endpoint"
-                )
+            # Caption is now optional - if not provided, we'll use Whisper transcription
 
-            # Determine caption file extension from URL
-            caption_ext = ".ass"
+            # Set up paths
+            audio_path = temp_path / f"{unique_id}_audio.wav"
+            output_video_path = PUBLIC_DIR / f"{unique_id}_artistic.mp4"
+
+            # If caption_url is provided, download and set up caption file
+            caption_path: Path | None = None
             if caption_url:
+                # Determine caption file extension from URL
+                caption_ext = ".ass"
                 caption_url_lower = caption_url.lower()
                 if ".srt" in caption_url_lower:
                     caption_ext = ".srt"
                 elif ".ass" in caption_url_lower or ".ssa" in caption_url_lower:
                     caption_ext = ".ass"
 
-            caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
-            audio_path = temp_path / f"{unique_id}_audio.wav"
-            output_video_path = PUBLIC_DIR / f"{unique_id}_artistic.mp4"
+                caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
 
-            # Download caption file
-            print(f"📥 Downloading caption file...")
-            await download_file(str(caption_url), caption_path, extra_headers=video_request.headers)
-            print(f"✅ Caption downloaded: {caption_path.stat().st_size} bytes")
+                # Download caption file
+                print(f"📥 Downloading caption file...")
+                await download_file(str(caption_url), caption_path, extra_headers=video_request.headers)
+                print(f"✅ Caption downloaded: {caption_path.stat().st_size} bytes")
 
             # Get audio - either download directly or extract from video
             video_processor = VideoProcessor()
@@ -535,15 +536,35 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
                 video_processor.extract_audio(input_video_path, audio_path)
                 print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
 
-            # Parse captions to get word-level timing
-            print(f"📝 Parsing captions...")
-            word_timings = parse_caption_file(caption_path)
-            print(f"✅ Parsed {len(word_timings)} words from captions")
+            # Get word-level timing - either from caption file or Whisper transcription
+            word_timings: list[dict[str, str | float]] = []
+            if caption_path:
+                # Parse captions to get word-level timing
+                print(f"📝 Parsing captions...")
+                word_timings = parse_caption_file(caption_path)
+                print(f"✅ Parsed {len(word_timings)} words from captions")
+            else:
+                # Use Whisper transcription to get word-level timing
+                print(f"📝 Transcribing audio with Whisper (no caption provided)...")
+                subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
+                transcription = subtitle_generator.transcribe_with_timing(audio_path)
+                print(f"✅ Whisper transcription complete")
+
+                # Extract word-level timing from Whisper result
+                # Whisper returns segments with words containing 'word', 'start', 'end'
+                for segment in transcription.get("segments", []):
+                    for word_info in segment.get("words", []):
+                        word_timings.append({
+                            "word": word_info.get("word", "").strip(),
+                            "start_time": float(word_info.get("start", 0)),
+                            "end_time": float(word_info.get("end", 0))
+                        })
+                print(f"✅ Extracted {len(word_timings)} words from transcription")
 
             if not word_timings:
                 raise HTTPException(
                     status_code=400,
-                    detail="No words found in caption file"
+                    detail="No words found in caption file or transcription"
                 )
 
             # Extract just the words for style generation (cast to str for type safety)
@@ -621,6 +642,8 @@ async def generate_artistic_video_upload(
 
     Accepts caption files (.ass/.srt) and audio via file upload.
     If video_file is provided instead of audio_file, audio will be extracted from it.
+    If no caption_file is provided, Whisper will be used to transcribe the audio and
+    extract word-level timing automatically.
     """
     try:
         # Validate output format
@@ -637,37 +660,37 @@ async def generate_artistic_video_upload(
                 detail="At least one of audio_file or video_file must be provided"
             )
 
-        # Validate that caption file is provided (required for this endpoint)
-        if not caption_file:
-            raise HTTPException(
-                status_code=400,
-                detail="caption_file is required for this endpoint"
-            )
+        # Caption file is now optional - if not provided, we'll use Whisper transcription
 
         unique_id = str(uuid.uuid4())[:8]
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            # Determine caption file extension from filename
-            caption_ext = ".ass"
-            if caption_file.filename:
-                filename_lower = caption_file.filename.lower()
-                if filename_lower.endswith(".srt"):
-                    caption_ext = ".srt"
-                elif filename_lower.endswith(".ass") or filename_lower.endswith(".ssa"):
-                    caption_ext = ".ass"
-
-            caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
+            # Set up paths
             audio_path = temp_path / f"{unique_id}_audio.wav"
             output_video_path = PUBLIC_DIR / f"{unique_id}_artistic.mp4"
 
-            # Save caption file
-            print(f"📥 Saving caption file...")
-            async with aiofiles.open(caption_path, 'wb') as f:
-                content = await caption_file.read()
-                await f.write(content)
-            print(f"✅ Caption saved: {caption_path.stat().st_size} bytes")
+            # If caption_file is provided, save it
+            caption_path: Path | None = None
+            if caption_file:
+                # Determine caption file extension from filename
+                caption_ext = ".ass"
+                if caption_file.filename:
+                    filename_lower = caption_file.filename.lower()
+                    if filename_lower.endswith(".srt"):
+                        caption_ext = ".srt"
+                    elif filename_lower.endswith(".ass") or filename_lower.endswith(".ssa"):
+                        caption_ext = ".ass"
+
+                caption_path = temp_path / f"{unique_id}_caption{caption_ext}"
+
+                # Save caption file
+                print(f"📥 Saving caption file...")
+                async with aiofiles.open(caption_path, 'wb') as f:
+                    content = await caption_file.read()
+                    await f.write(content)
+                print(f"✅ Caption saved: {caption_path.stat().st_size} bytes")
 
             # Get audio - either from audio file or extract from video
             video_processor = VideoProcessor()
@@ -704,15 +727,35 @@ async def generate_artistic_video_upload(
                 video_processor.extract_audio(input_video_path, audio_path)
                 print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
 
-            # Parse captions to get word-level timing
-            print(f"📝 Parsing captions...")
-            word_timings = parse_caption_file(caption_path)
-            print(f"✅ Parsed {len(word_timings)} words from captions")
+            # Get word-level timing - either from caption file or Whisper transcription
+            word_timings: list[dict[str, str | float]] = []
+            if caption_path:
+                # Parse captions to get word-level timing
+                print(f"📝 Parsing captions...")
+                word_timings = parse_caption_file(caption_path)
+                print(f"✅ Parsed {len(word_timings)} words from captions")
+            else:
+                # Use Whisper transcription to get word-level timing
+                print(f"📝 Transcribing audio with Whisper (no caption provided)...")
+                subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
+                transcription = subtitle_generator.transcribe_with_timing(audio_path)
+                print(f"✅ Whisper transcription complete")
+
+                # Extract word-level timing from Whisper result
+                # Whisper returns segments with words containing 'word', 'start', 'end'
+                for segment in transcription.get("segments", []):
+                    for word_info in segment.get("words", []):
+                        word_timings.append({
+                            "word": word_info.get("word", "").strip(),
+                            "start_time": float(word_info.get("start", 0)),
+                            "end_time": float(word_info.get("end", 0))
+                        })
+                print(f"✅ Extracted {len(word_timings)} words from transcription")
 
             if not word_timings:
                 raise HTTPException(
                     status_code=400,
-                    detail="No words found in caption file"
+                    detail="No words found in caption file or transcription"
                 )
 
             # Extract just the words for style generation (cast to str for type safety)
