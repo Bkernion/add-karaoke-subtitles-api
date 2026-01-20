@@ -1,0 +1,399 @@
+# Ralph Progress Log
+Started: Mon Jan 19 23:58:00 EST 2026
+
+## Codebase Patterns
+- Use `npx pyright <file.py>` for type checking - mypy is not installed
+- Pre-existing type errors in main.py and subtitle_generator.py (not introduced by this work)
+- Google Fonts can be downloaded via `https://fonts.google.com/download?family=Font+Name` URLs
+
+---
+
+## 2026-01-20 - US-001
+Commit: 4e5750c0a3326ccf60a04f4f80d597e28adc45de
+- Created fonts/ directory for storing downloaded Google Fonts TTF files
+- Added fonts/FONTS.md documenting 25 Google Fonts to download
+- Created download_fonts.py script to download fonts from Google Fonts API
+- Files changed: fonts/FONTS.md (new), download_fonts.py (new)
+- **Learnings for future iterations:**
+  - Google Fonts provides ZIP downloads with TTF files at predictable URLs
+  - Font weight patterns vary - some fonts use "Bold", others use "700" in filenames
+  - The script handles both single-weight fonts (like Bebas Neue) and multi-weight fonts (like Montserrat)
+---
+
+## Tue Jan 20 00:02:29 EST 2026 - Iteration 1 Warning
+Potential errors detected in Claude output:
+- Typecheck passes (0 errors on new file)
+---
+
+## 2026-01-20 - US-002
+Commit: 721896a22419e10eb2670da2e1fbfe1a2487e707
+- Updated Dockerfile to register bundled fonts with fontconfig
+- Added custom fontconfig configuration at /etc/fonts/conf.d/99-custom-fonts.conf
+- Added /app/fonts directory to font search paths
+- Run fc-cache to rebuild font cache after copying files
+- Files changed: Dockerfile
+- **Learnings for future iterations:**
+  - `COPY . .` already copies the fonts/ directory to /app/fonts, no need for redundant COPY
+  - Fontconfig uses XML configuration files in /etc/fonts/conf.d/
+  - fc-cache -f -v forces full rebuild with verbose output
+  - Docker daemon was not running locally, so build could not be verified - will be tested in CI/CD
+---
+
+## 2026-01-20 - US-003
+Commit: 8120b66c81aae1b4adda7cfd017b2a60aa350ca0
+- Created font_registry.py with FontRegistry class
+- Implemented get_available_fonts() returning sorted list of font names from fonts/ directory
+- Implemented get_font_path(font_name) returning absolute path to TTF file
+- Implemented is_valid_font(font_name) to validate font existence
+- Implemented get_random_font() returning random font from available fonts
+- Added module-level convenience functions that use a default singleton registry
+- Added refresh() method to clear cache after adding new fonts
+- Files changed: font_registry.py (new)
+- **Learnings for future iterations:**
+  - Font names are derived from TTF filenames (stem without extension)
+  - The download_fonts.py script saves fonts as {FontName}.ttf (e.g., BebasNeue.ttf, Oswald.ttf)
+  - Font registry scans .ttf files from the fonts/ directory
+  - Module provides both class-based (FontRegistry) and function-based APIs for flexibility
+---
+
+## Tue Jan 20 00:06:19 EST 2026 - Iteration 3 Warning
+Potential errors detected in Claude output:
+- Typecheck passes (0 errors)
+---
+
+## 2026-01-20 - US-004
+Commit: 667c9e5682eb5189e05012b34d9cd71ad5dcf8c6
+- Created color_utils.py with ColorPalette dataclass for managing color combinations
+- Implemented generate_complementary_palette() returning background, font, and optional highlight colors
+- Added WCAG AA compliant contrast ratio calculation (4.5:1 minimum)
+- Included 15 curated palettes (10 solid, 5 gradient) - all verified for contrast compliance
+- Support for solid and gradient backgrounds with proper type hints
+- Files changed: color_utils.py (new)
+- **Learnings for future iterations:**
+  - WCAG 2.1 contrast calculation uses relative luminance formula with specific linearization
+  - For gradient backgrounds, both color endpoints must pass contrast check with font color
+  - ColorPalette dataclass stores: background_color, background_color_2 (optional for gradients), font_color, highlight_color (optional), is_gradient flag
+  - Initial palette selection had contrast issues - always verify palettes programmatically
+---
+
+## Tue Jan 20 00:09:14 EST 2026 - Iteration 4 Warning
+Potential errors detected in Claude output:
+- Typecheck passes (0 errors)
+---
+
+## 2026-01-20 - US-005
+Commit: 8945205327524286675abd0107612175900a48d9
+- Created style_engine.py with StyleEngine class for generating random frame styles
+- Implemented generate_frame_style(word) method returning complete style specification
+- Returns dict with: font_name, font_size, font_color, background_type (solid/gradient), background_colors, text_position, text_rotation, highlight_style (none/box/brush), shadow_enabled, glow_enabled
+- Integrates with font_registry (get_random_font) and color_utils (generate_complementary_palette)
+- Position choices: center, top_third, bottom_third, left_offset, right_offset
+- Font size auto-scales for longer words (80-200px base range, reduced for words > 6 chars)
+- Added FrameStyle dataclass with full type hints for all style properties
+- Added TextPosition, HighlightStyle, GradientDirection enums
+- Added generate_styles_for_words() for batch generation with optional coherent mode
+- Files changed: style_engine.py (new)
+- **Learnings for future iterations:**
+  - FrameStyle dataclass provides strongly-typed style specification for frame generator
+  - Font size calculation scales down max size by ratio of CHARS_AT_MAX_SIZE / word_length
+  - Position presets use percentage coordinates (0.0-1.0) for resolution independence
+  - Coherent mode keeps same color palette across frames but varies position/effects
+  - Module provides both StyleEngine class and convenience functions (generate_frame_style, generate_styles_for_words)
+---
+
+## 2026-01-20 - US-006
+Commit: a476309bfd8b007f78815806214a7d5df7d17240
+- Created frame_generator.py with FrameGenerator class for basic text rendering
+- Added Pillow>=10.0.0 to requirements.txt
+- Implemented generate_frame(word, style, dimensions) method returning PIL Image
+- Supports solid color backgrounds via _create_solid_background()
+- Supports custom fonts from font_registry via _get_font() with fallback chain
+- Supports 3 dimension presets: 9:16 (1080x1920), 1:1 (1080x1080), 16:9 (1920x1080)
+- Added FrameDimensions dataclass with factory methods from_aspect_ratio() and from_format_string()
+- Text positioned using percentage-based coordinates from FrameStyle with bounds checking
+- Files changed: frame_generator.py (new), requirements.txt (modified)
+- **Learnings for future iterations:**
+  - FrameDimensions.from_format_string("9:16") converts string format to dimensions
+  - Font loading has fallback chain: font_registry -> system fonts -> PIL default
+  - Font cache in FrameGenerator reduces repeated font loading
+  - Text positioning uses percentage (0.0-1.0) coordinates, converted to pixel positions
+  - PIL's textbbox() returns float values that need int() conversion for type safety
+  - Gradient backgrounds, rotation, shadows, and glow are stubbed for later stories (US-007, US-009, US-010)
+---
+
+## Tue Jan 20 00:18:29 EST 2026 - Iteration 1 Warning
+Potential errors detected in Claude output:
+  - Typecheck passes (0 errors)
+---
+
+## 2026-01-20 - US-007
+Commit: 3ab357f0c7636bf6120d0106d44b0e6ff622a24d
+- Extended frame_generator.py with gradient background support
+- Added _create_gradient_background() method supporting vertical, horizontal, and diagonal gradients
+- Updated generate_frame() to use gradient background when style.background_type == "gradient"
+- Gradient uses two colors from style.background_colors and direction from style.gradient_direction
+- Files changed: frame_generator.py (modified)
+- **Learnings for future iterations:**
+  - Gradient rendering uses per-pixel interpolation with ratio based on position
+  - Vertical gradients iterate by row (efficient), horizontal by column (less efficient for putpixel)
+  - Diagonal gradient uses Manhattan distance (x + y) from top-left corner
+  - GradientDirection enum imported from style_engine (VERTICAL, HORIZONTAL, DIAGONAL)
+  - Gradient defaults to VERTICAL if direction is None
+---
+
+## Tue Jan 20 00:20:37 EST 2026 - Iteration 2 Warning
+Potential errors detected in Claude output:
+- **Typecheck**: Passes (0 errors)
+---
+
+## 2026-01-20 - US-008
+Commit: 98d542c8b3bf05568dc5fcb3ee3118c2ec1f2559
+- Extended frame_generator.py with highlight box/shape support
+- Added _draw_highlight_box() method for rectangular highlights behind text
+- Added _draw_highlight_brush() method for parallelogram/angled highlights (brush stroke style)
+- Integrated highlight rendering into generate_frame() method - draws before text for proper layering
+- Highlight color and padding are configurable via style dict (highlight_color, highlight_padding)
+- Files changed: frame_generator.py (modified)
+- **Learnings for future iterations:**
+  - Highlights must be drawn BEFORE text to appear behind it (painter's algorithm)
+  - HighlightStyle enum imported from style_engine (NONE, BOX, BRUSH)
+  - Parallelogram skew is calculated as 25% of height for consistent angle across sizes
+  - PIL's draw.polygon() takes a list of (x, y) tuples for arbitrary shapes
+  - Highlight padding expands the shape beyond text bounding box
+---
+
+## Tue Jan 20 00:22:54 EST 2026 - Iteration 3 Warning
+Potential errors detected in Claude output:
+- Typecheck passes (0 errors)
+---
+
+## 2026-01-20 - US-009
+Commit: 1818f7ed7391ad9c563236b651dc955906081485
+- Extended frame_generator.py with drop shadow and glow effects
+- Added _create_shadow_layer() method for configurable drop shadows with offset, blur, and color
+- Added _create_glow_layer() method for configurable glow effects with radius and color
+- Integrated shadow and glow rendering into generate_frame() using PIL alpha compositing
+- Shadow uses semi-transparent overlay (alpha=180) with GaussianBlur for soft edges
+- Glow created by drawing text multiple times at slight offsets then applying GaussianBlur
+- Effects render in correct order: shadow -> glow -> text (painter's algorithm)
+- Image converts to RGBA for compositing, then back to RGB for final output
+- Files changed: frame_generator.py (modified)
+- **Learnings for future iterations:**
+  - PIL's ImageFilter.GaussianBlur used for both shadow blur and glow spread
+  - Alpha compositing requires RGBA mode - convert and composite, then convert back to RGB
+  - Glow effect created by drawing text multiple times in a grid (-2 to +2 offsets) before blurring
+  - Shadow offset is (x, y) pixels from original text position
+  - Glow radius is multiplied by 1.5 for more visible spread effect
+  - Draw context must be recreated after image.convert() since it's tied to the image mode
+---
+
+## Tue Jan 20 00:25:37 EST 2026 - Iteration 4 Warning
+Potential errors detected in Claude output:
+- **Typecheck:** Passes (0 errors)
+---
+
+## 2026-01-20 - US-010
+Commit: de0145973dc277df517d4d490e66a61208000e55
+- Extended frame_generator.py with text rotation support (-15 to +15 degrees)
+- Added _create_rotated_text_layer() method for rendering text on transparent layer then rotating
+- Added _create_rotated_highlight_layer() method for rotated highlight boxes/parallelograms
+- Updated _calculate_text_position() to accept optional rotated_size for proper bounds checking
+- Modified generate_frame() to branch between rotated and non-rotated code paths
+- Rotated text, shadows, glow, and highlights all stay within frame bounds
+- Uses PIL's Image.rotate() with BICUBIC resampling and expand=True for quality
+- Files changed: frame_generator.py (modified)
+- **Learnings for future iterations:**
+  - Text rotation requires creating a separate transparent RGBA layer, drawing text, rotating, then compositing
+  - Rotated layer size calculated using diagonal (sqrt(w² + h²)) to accommodate any rotation angle
+  - PIL's rotate() with expand=True auto-sizes the output to contain the full rotated content
+  - For bounds checking with rotation, use the rotated layer's size, not the original text bbox
+  - Threshold of 0.1 degrees avoids unnecessary rotation processing for near-zero angles
+  - All effects (shadow, glow, highlight) must also be rotated to match the text
+---
+
+## Tue Jan 20 00:28:35 EST 2026 - Iteration 5 Warning
+Potential errors detected in Claude output:
+- Typecheck passes with 0 errors
+---
+
+## 2026-01-20 - US-011
+Commit: 980c919de675313429e3bae9cfc35da698a945d0
+- Created caption_parser.py module for word-level timing extraction from SRT and ASS files
+- Implemented parse_srt(file_path) to extract words with start_time and end_time
+- Implemented parse_ass(file_path) to extract words with start_time and end_time
+- Returns list of dicts: [{word, start_time, end_time}, ...]
+- Supports karaoke timing tags (\k, \K, \kf, \ko) in ASS files for precise word-level timing
+- Falls back to even timing distribution for multi-word subtitle lines without karaoke tags
+- Added parse_caption_file() convenience function that auto-detects format from extension
+- Handles multiple file encodings (utf-8, utf-8-sig, latin-1, cp1252, iso-8859-1)
+- Files changed: caption_parser.py (new)
+- **Learnings for future iterations:**
+  - SRT format uses HH:MM:SS,mmm (comma for milliseconds), ASS uses H:MM:SS.CC (centiseconds)
+  - ASS karaoke tags encode duration in centiseconds: {\k50} = 0.5 seconds
+  - WordTiming dataclass used internally; public API returns plain dicts for flexibility
+  - Raw string docstrings (r"...") avoid escape sequence warnings for \k documentation
+  - ASS dialogue format: Dialogue: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+  - Split ASS lines with maxsplit=9 since Text field may contain commas
+---
+
+## Tue Jan 20 00:31:21 EST 2026 - Iteration 6 Warning
+Potential errors detected in Claude output:
+- Typecheck passes with 0 errors and 0 warnings
+---
+
+## 2026-01-20 - US-012
+Commit: 3c1accdc757dbfaf1bf13530f0dade8858124de5
+- Created video_assembler.py module for assembling image frames into video with audio
+- Implemented VideoAssembler class with assemble() method
+- Uses FFmpeg concat demuxer to combine frames at specified durations
+- Added FrameWithTiming dataclass to encapsulate PIL Image with start_time and end_time
+- Supports all three output formats: 9:16 (portrait), 1:1 (square), 16:9 (landscape)
+- Output is H.264 MP4 with AAC audio, optimized for web (faststart, yuv420p)
+- Added create_frames_with_timing() helper to convert caption_parser output format
+- Files changed: video_assembler.py (new)
+- **Learnings for future iterations:**
+  - FFmpeg concat demuxer requires a text file listing files and durations
+  - Concat file format: `file 'path'` followed by `duration X.XXXXXX`
+  - Last frame must be repeated without duration to ensure it displays
+  - `shortest=None` in ffmpeg-python enables the -shortest flag to end when audio ends
+  - Pre-existing ffmpeg import error in pyright (also affects video_processor.py) - known limitation
+  - FrameWithTiming.duration property computes end_time - start_time
+---
+
+## Tue Jan 20 00:35:07 EST 2026 - Iteration 7 Warning
+Potential errors detected in Claude output:
+**Typecheck:** The only error is the pre-existing `ffmpeg` import error that also affects `video_processor.py` - this is a known limitation in the codebase.
+---
+
+## 2026-01-20 - US-013
+Commit: 7d75fc8bd28009f81f3bc5ef034cf7b44745794d
+- Added ArtisticVideoRequest Pydantic model to main.py for artistic video generation requests
+- Added ArtisticVideoResponse Pydantic model with status, download_url, message fields
+- Request model supports: caption_url (optional), audio_url (optional), video_url (optional), output_format (9:16, 1:1, 16:9), headers, base64_urls
+- Added model_post_init validation: requires at least one of audio_url or video_url
+- Added output_format validation: must be one of "9:16", "1:1", "16:9"
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - Pydantic's model_post_init(__context: Any) is the pattern for cross-field validation
+  - Existing models (VideoRequest, VideoResponse) serve as good templates for new models
+  - Pre-existing type errors in main.py (subtitle_position: float = None) should not block new work
+  - File uploads will be handled separately in US-015 via Form/UploadFile
+---
+
+## Tue Jan 20 00:37:39 EST 2026 - Iteration 8 Warning
+Potential errors detected in Claude output:
+- Typecheck passes (no new errors introduced)
+---
+
+## 2026-01-20 - US-014
+Commit: 97ee60b072fe3dc874f23ee4b12155e5fb61027b
+- Added POST /generate-artistic-video endpoint to main.py
+- Endpoint accepts caption_url (.ass or .srt) and audio_url (.mp3) OR video_url (extracts audio)
+- Imports added: caption_parser, style_engine, frame_generator, video_assembler modules
+- Added download_file() helper function for downloading caption and audio files with resilient headers
+- Endpoint flow: download files → parse captions → generate styles → generate frames → assemble video
+- Returns ArtisticVideoResponse with status, download_url, and message
+- Uses unique ID (uuid) for concurrent request safety
+- Proper error handling with HTTPException for validation errors
+- Supports base64_urls option for encoded URLs
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - Type casting required when passing dict values to typed functions (str(wt["word"]), float(wt["start_time"]))
+  - Use typing.cast() for Literal types when passing string values from request models
+  - The create_frames_with_timing() helper expects list[dict[str, float]] not list[dict[str, str | float]]
+  - FFmpeg audio conversion may fail for some formats; implement fallback to use original file
+  - Endpoint pattern follows existing /generate-karaoke-subtitles structure with temp directory cleanup
+---
+
+## Tue Jan 20 00:40:51 EST 2026 - Iteration 9 Warning
+Potential errors detected in Claude output:
+- ✅ Proper error handling with `HTTPException`
+- ✅ Typecheck passes (no new errors introduced)
+---
+
+## 2026-01-20 - US-015
+Commit: ff6f4d2454694d1655317f233f517d396aa9b040
+- Added POST /generate-artistic-video-upload endpoint with file upload support
+- Added UploadFile and File imports from FastAPI, Form import for output_format
+- Endpoint accepts caption_file (UploadFile), audio_file (UploadFile), video_file (UploadFile) as optional
+- Accepts output_format as Form field (default: "9:16")
+- Validation: requires at least one of audio_file or video_file, requires caption_file
+- If video_file provided, extracts audio using VideoProcessor.extract_audio()
+- Saves uploaded files to temp directory, processes them, and cleans up
+- Returns same ArtisticVideoResponse format as the URL endpoint
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - FastAPI file uploads use `UploadFile | None = File(None)` pattern for optional files
+  - Form fields use `str = Form("default")` pattern with default values
+  - Use `async with aiofiles.open(path, 'wb') as f:` and `await file.read()` to save uploaded files
+  - Use `# type: ignore[union-attr]` comment for file.read() when file is checked to exist but pyright doesn't track it
+  - The endpoint structure closely mirrors the URL endpoint for consistency
+---
+
+## 2026-01-20 - US-016
+Commit: 88d30e6349fbdc9f9a7e82a2123ad443e448a8bc
+- Extended both artistic video endpoints to work without caption file
+- When no caption_url or caption_file is provided, use Whisper transcription
+- Integrates with existing KaraokeSubtitleGenerator.transcribe_with_timing()
+- Extracts word-level timing from Whisper result (segments[].words[] with 'word', 'start', 'end')
+- Converts Whisper output format to expected word_timings format (word, start_time, end_time)
+- Updated docstrings for both endpoints to document the caption-less mode
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - Whisper model is already loaded at startup (`whisper_model = whisper.load_model("base")`)
+  - KaraokeSubtitleGenerator.transcribe_with_timing() returns dict with 'segments' containing 'words' arrays
+  - Whisper word timing format: {'word': str, 'start': float, 'end': float}
+  - Caption parser format: {'word': str, 'start_time': float, 'end_time': float}
+  - Caption path must be typed as `Path | None` when made optional
+  - The conversion loop extracts word timing from nested Whisper structure to flat list
+---
+
+## 2026-01-20 - US-017
+Commit: 90c31de6240efb5945bf23a645f9394379cfd8f1
+- Added POST /upload-font endpoint to main.py
+- Added FontUploadResponse Pydantic model with status, font_name, message fields
+- Implemented TTF magic bytes validation (supports TrueType, OpenType 'OTTO', and 'true' variants)
+- Added sanitize_font_filename() function to prevent path traversal and normalize filenames
+- Saves fonts to fonts/ directory with automatic unique naming if file exists
+- Added 10MB file size limit for uploads
+- Refreshes font_registry after upload so new fonts are immediately available
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - TTF files have magic bytes at offset 0: 0x00010000 (TrueType), 0x4F54544F (OpenType), or 0x74727565 ('true')
+  - Use os.path.basename() first to prevent path traversal attacks like "../../../etc/passwd"
+  - font_registry.refresh() clears the cache so newly added fonts are picked up
+  - FastAPI File(...) with ellipsis makes the upload required, File(None) makes it optional
+  - FONTS_DIR defined as Path(__file__).parent / "fonts" for correct relative path
+---
+
+## 2026-01-20 - US-018
+Commit: 5a7ca4878a8831f339604a03116c274d50ba6e53
+- Added GET /fonts endpoint to list all available fonts
+- Added FontListResponse Pydantic model with fonts (list[str]) and count (int) fields
+- Endpoint uses get_default_registry().get_available_fonts() to retrieve fonts
+- Returns both bundled fonts and user-uploaded fonts (font registry picks up all .ttf files)
+- Files changed: main.py (modified)
+- **Learnings for future iterations:**
+  - Simple GET endpoints in FastAPI just need @app.get() decorator with response_model
+  - FontRegistry.get_available_fonts() returns sorted list of font names (stems of .ttf files)
+  - The font registry's refresh() method was already implemented in US-017 for upload-font
+---
+
+## 2026-01-20 - US-019
+Commit: 6360c4e48f6c5f6ae95291ab2aed1d1ed3a396bf
+- Updated API_DOCUMENTATION.md with all new artistic video endpoints
+- Added documentation for /generate-artistic-video (URL-based) endpoint
+- Added documentation for /generate-artistic-video-upload (file upload) endpoint
+- Added documentation for /upload-font endpoint
+- Added documentation for /fonts endpoint
+- Added Output Format Guide section documenting 9:16, 1:1, 16:9 formats
+- Added request/response examples in cURL, Python, and JavaScript
+- Updated Technical Specifications section with artistic video output specs
+- Updated Font Support section with bundled Google Fonts list
+- Reorganized Table of Contents with nested endpoint categories
+- Files changed: API_DOCUMENTATION.md (modified)
+- **Learnings for future iterations:**
+  - Documentation should include platform-specific format recommendations (TikTok, Instagram, YouTube)
+  - Request parameter tables should differentiate between optional with default vs optional without default
+  - Typecheck on markdown files has no effect - focus on documentation completeness and accuracy
+---

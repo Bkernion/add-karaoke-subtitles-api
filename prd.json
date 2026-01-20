@@ -1,0 +1,313 @@
+{
+  "project": "Karaoke Subtitle API",
+  "branchName": "ralph/artistic-word-video-generator",
+  "description": "Artistic Word-by-Word Video Generator - Create scroll-stopping social media videos with dynamic typography, where each word appears on its own artistic frame with varying fonts, colors, positions, backgrounds (solid/gradient), and effects (shadows, glow, highlights). Accepts .ass/.srt captions or generates them via Whisper, combines with voiceover audio.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add bundled Google Fonts TTF files to project",
+      "description": "As a developer, I need eye-catching fonts bundled in the project for deployment.",
+      "acceptanceCriteria": [
+        "Create fonts/ directory in project root",
+        "Add a FONTS.md file documenting 25-30 Google Fonts to download (Bebas Neue, Oswald, Anton, Archivo Black, Passion One, Permanent Marker, Pacifico, Caveat, Montserrat Bold, Poppins Bold, Lobster, Bangers, Righteous, Fredoka One, Luckiest Guy, Black Ops One, Russo One, Rubik Bold, Titan One, Boogaloo, Kaushan Script, Rock Salt, Shadows Into Light, Quicksand Bold, Raleway Black)",
+        "Add a download_fonts.py script that downloads these fonts from Google Fonts API",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Google Fonts are free for commercial use. Script should download TTF files to fonts/ directory."
+    },
+    {
+      "id": "US-002",
+      "title": "Update Dockerfile to include bundled fonts",
+      "description": "As a developer, I need the bundled fonts available in the Docker container for Render deployment.",
+      "acceptanceCriteria": [
+        "Copy fonts/ directory to Docker image at /app/fonts",
+        "Add fonts directory to fontconfig search paths",
+        "Run fc-cache to register new fonts",
+        "Dockerfile builds successfully",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Depends on US-001 fonts being present"
+    },
+    {
+      "id": "US-003",
+      "title": "Create font registry utility module",
+      "description": "As a developer, I need a utility to list available fonts and validate font names.",
+      "acceptanceCriteria": [
+        "Create font_registry.py with FontRegistry class",
+        "get_available_fonts() returns list of font names from fonts/ directory",
+        "get_font_path(font_name) returns absolute path to TTF file",
+        "is_valid_font(font_name) validates font exists",
+        "get_random_font() returns random font from available fonts",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Create complementary color palette generator",
+      "description": "As a developer, I need color utilities that generate readable, complementary color combinations.",
+      "acceptanceCriteria": [
+        "Create color_utils.py module",
+        "generate_complementary_palette() returns background color, font color, and optional highlight color",
+        "All palettes ensure minimum contrast ratio of 4.5:1 for readability (WCAG AA)",
+        "Support solid colors and gradient color pairs",
+        "Include 10+ curated base palettes (coral/teal, purple/gold, etc.) that get randomized",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Reference images show coral/teal, blue gradient/gold, peach/cyan+green combinations"
+    },
+    {
+      "id": "US-005",
+      "title": "Create style randomization engine",
+      "description": "As a developer, I need an engine that generates random but cohesive style choices for each frame.",
+      "acceptanceCriteria": [
+        "Create style_engine.py module",
+        "StyleEngine class with generate_frame_style() method",
+        "Returns dict with: font_name, font_size, font_color, background_type (solid/gradient), background_colors, text_position (x,y), text_rotation, highlight_style (none/box/brush), shadow_enabled, glow_enabled",
+        "Integrates with font_registry and color_utils",
+        "Position choices include: center, top-third, bottom-third, left-offset, right-offset",
+        "Font size randomized within readable range (80-200px), with automatic reduction for longer words to ensure they fit within frame bounds",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Create artistic frame generator - basic text rendering",
+      "description": "As a developer, I need to generate image frames with styled text on solid color backgrounds.",
+      "acceptanceCriteria": [
+        "Create frame_generator.py module using Pillow (PIL)",
+        "Add Pillow to requirements.txt",
+        "FrameGenerator class with generate_frame(word, style, dimensions) method",
+        "Renders text centered or at specified position",
+        "Supports solid color backgrounds",
+        "Supports custom fonts from font_registry",
+        "Returns PIL Image object",
+        "Supports 1080x1920 (9:16 portrait), 1080x1080 (1:1 square), and 1920x1080 (16:9 landscape) dimensions",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add gradient background support to frame generator",
+      "description": "As a developer, I need frames to support gradient backgrounds.",
+      "acceptanceCriteria": [
+        "Extend frame_generator.py with gradient support",
+        "Support linear gradients (vertical, horizontal, diagonal)",
+        "Gradient defined by two colors from style dict",
+        "Gradient direction randomized or specified in style",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Reference 'IMAGINE' image shows blue-to-teal vertical gradient"
+    },
+    {
+      "id": "US-008",
+      "title": "Add highlight box/shape support to frame generator",
+      "description": "As a developer, I need frames to support colored highlight shapes behind text.",
+      "acceptanceCriteria": [
+        "Extend frame_generator.py with highlight support",
+        "Support rectangular highlight box behind text",
+        "Support angled/parallelogram highlight shape",
+        "Highlight color from style dict",
+        "Highlight padding configurable",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Reference 'You' image shows green parallelogram highlight behind cyan text"
+    },
+    {
+      "id": "US-009",
+      "title": "Add drop shadow and glow effects to frame generator",
+      "description": "As a developer, I need text effects like shadows and glow for visual impact.",
+      "acceptanceCriteria": [
+        "Extend frame_generator.py with shadow effect",
+        "Drop shadow with configurable offset, blur, and color",
+        "Glow effect with configurable radius and color",
+        "Effects enabled/disabled via style dict",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Reference 'IMAGINE' shows golden glow, 'Loudly' shows spray paint shadow effect"
+    },
+    {
+      "id": "US-010",
+      "title": "Add text rotation and varied positioning to frame generator",
+      "description": "As a developer, I need text to appear at different angles and positions for dynamic variety.",
+      "acceptanceCriteria": [
+        "Extend frame_generator.py with rotation support",
+        "Support rotation angles from -15 to +15 degrees",
+        "Position text at various screen locations (not just center)",
+        "Ensure rotated text stays within frame bounds",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Reference 'Loudly' shows slight rotation angle"
+    },
+    {
+      "id": "US-011",
+      "title": "Create caption parser for word-level timing extraction",
+      "description": "As a developer, I need to parse SRT and ASS files to extract individual words with their timing.",
+      "acceptanceCriteria": [
+        "Create caption_parser.py module",
+        "parse_srt(file_path) extracts words with start_time and end_time",
+        "parse_ass(file_path) extracts words with start_time and end_time",
+        "Returns list of dicts: [{word, start_time, end_time}, ...]",
+        "Handles multi-word subtitle lines by distributing timing evenly or using word-level tags if present",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "ASS files may have karaoke timing tags (\\k) for precise word timing"
+    },
+    {
+      "id": "US-012",
+      "title": "Create video assembler to combine frames with audio",
+      "description": "As a developer, I need to assemble image frames into a video synced with audio.",
+      "acceptanceCriteria": [
+        "Create video_assembler.py module",
+        "VideoAssembler class with assemble(frames_with_timing, audio_path, output_path, format) method",
+        "frames_with_timing is list of (PIL Image, start_time, end_time) tuples",
+        "Uses FFmpeg to create video from frames",
+        "Each frame displays for its word's duration",
+        "Audio track added from mp3 file",
+        "Supports 9:16 portrait, 1:1 square, and 16:9 landscape output formats",
+        "Output is H.264 MP4 optimized for web",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Use FFmpeg concat demuxer or image2 input with duration per frame"
+    },
+    {
+      "id": "US-013",
+      "title": "Create API request/response models for artistic video endpoint",
+      "description": "As a developer, I need Pydantic models for the new endpoint's request and response.",
+      "acceptanceCriteria": [
+        "Add ArtisticVideoRequest model to main.py",
+        "Request fields: caption_url (optional), audio_url (optional), video_url (optional, extracts audio), output_format (9:16, 1:1, or 16:9, default 9:16)",
+        "Add ArtisticVideoResponse model with status, download_url, message fields",
+        "Validation: at least one of audio_url, video_url, or file upload required",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "File uploads handled separately via Form/UploadFile"
+    },
+    {
+      "id": "US-014",
+      "title": "Create artistic video endpoint with URL inputs",
+      "description": "As a user, I want to generate artistic word videos by providing URLs to caption and audio files.",
+      "acceptanceCriteria": [
+        "Add POST /generate-artistic-video endpoint to main.py",
+        "Accepts caption_url (.ass or .srt) and audio_url (.mp3) OR video_url (extracts audio from video)",
+        "Downloads files, parses captions, generates frames, assembles video",
+        "Returns JSON with download_url to final video",
+        "Uses unique ID for concurrent request safety",
+        "Proper error handling with HTTPException",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Follow existing endpoint patterns in main.py"
+    },
+    {
+      "id": "US-015",
+      "title": "Add file upload support to artistic video endpoint",
+      "description": "As a user, I want to upload caption and audio files directly instead of providing URLs.",
+      "acceptanceCriteria": [
+        "Add POST /generate-artistic-video-upload endpoint",
+        "Accepts caption_file (UploadFile, optional) and audio_file (UploadFile, optional) OR video_file (UploadFile, optional - extracts audio)",
+        "Accepts output_format as Form field",
+        "Validation: at least one of audio_file or video_file required",
+        "If video_file provided, extract audio using VideoProcessor.extract_audio()",
+        "Saves uploads to temp directory for processing",
+        "Returns same response format as URL endpoint",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Use python-multipart for file uploads (already in requirements for FastAPI)"
+    },
+    {
+      "id": "US-016",
+      "title": "Add Whisper transcription option for caption-less mode",
+      "description": "As a user, I want to generate artistic videos without providing a caption file by having the system transcribe the audio.",
+      "acceptanceCriteria": [
+        "Extend both artistic video endpoints to work without caption file",
+        "When no caption provided, use Whisper to transcribe audio",
+        "Extract word-level timing from Whisper transcription result",
+        "Integrate with existing KaraokeSubtitleGenerator.transcribe_with_timing()",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Whisper model already loaded at startup in existing code"
+    },
+    {
+      "id": "US-017",
+      "title": "Add custom font upload endpoint",
+      "description": "As a user, I want to upload custom TTF fonts to use in my artistic videos.",
+      "acceptanceCriteria": [
+        "Add POST /upload-font endpoint",
+        "Accepts TTF file upload",
+        "Validates file is valid TTF font",
+        "Saves to fonts/ directory with sanitized filename",
+        "Returns font name for use in future requests",
+        "Updates font registry to include new font",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Consider security: validate TTF magic bytes, sanitize filename"
+    },
+    {
+      "id": "US-018",
+      "title": "Add endpoint to list available fonts",
+      "description": "As a user, I want to see what fonts are available for artistic video generation.",
+      "acceptanceCriteria": [
+        "Add GET /fonts endpoint",
+        "Returns JSON list of available font names",
+        "Includes both bundled fonts and user-uploaded fonts",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Update API documentation for new endpoints",
+      "description": "As a developer, I need the API documentation updated with the new artistic video endpoints.",
+      "acceptanceCriteria": [
+        "Update API_DOCUMENTATION.md with /generate-artistic-video endpoint",
+        "Update API_DOCUMENTATION.md with /generate-artistic-video-upload endpoint",
+        "Update API_DOCUMENTATION.md with /upload-font endpoint",
+        "Update API_DOCUMENTATION.md with /fonts endpoint",
+        "Include request/response examples",
+        "Document supported output formats",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

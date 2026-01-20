@@ -96,6 +96,9 @@ def _distribute_timing_to_words(
     """
     Distribute timing evenly across words in a text string.
 
+    Timing is calculated based on original word positions to preserve
+    the intended rhythm even when characters are cleaned from words.
+
     Args:
         text: The text containing words to time.
         start_time: Start time of the entire text block.
@@ -104,21 +107,23 @@ def _distribute_timing_to_words(
     Returns:
         List of WordTiming objects with evenly distributed timing.
     """
-    # Split into words and filter empty strings
-    words = [w.strip() for w in text.split() if w.strip()]
+    # Split into words (keep original positions for timing)
+    raw_words = [w.strip() for w in text.split() if w.strip()]
 
-    if not words:
+    if not raw_words:
         return []
 
     duration = end_time - start_time
-    word_duration = duration / len(words) if len(words) > 0 else duration
+    word_duration = duration / len(raw_words)  # Based on ORIGINAL word count
 
     result: list[WordTiming] = []
-    for i, word in enumerate(words):
+    for i, word in enumerate(raw_words):
         cleaned_word = _clean_word(word)
-        if cleaned_word:  # Skip empty words after cleaning
-            word_start = start_time + (i * word_duration)
-            word_end = word_start + word_duration
+        # Calculate timing based on original position
+        word_start = start_time + (i * word_duration)
+        word_end = word_start + word_duration
+        # Only add if word has content after cleaning
+        if cleaned_word:
             result.append(WordTiming(word=cleaned_word, start_time=word_start, end_time=word_end))
 
     return result
@@ -160,30 +165,38 @@ def _parse_karaoke_tags(text: str, start_time: float) -> list[WordTiming] | None
             # Handle multiple words within a single karaoke tag
             words = word_text.split()
             if len(words) > 1:
-                # Distribute timing across multiple words
+                # Distribute timing across multiple words based on ORIGINAL count
                 word_duration = duration_seconds / len(words)
                 for word in words:
                     cleaned = _clean_word(word)
+                    word_start = current_time
+                    word_end = current_time + word_duration
+                    # Always advance timing based on original position
+                    current_time += word_duration
+                    # Only add to result if word has content
                     if cleaned:
                         result.append(
                             WordTiming(
                                 word=cleaned,
-                                start_time=current_time,
-                                end_time=current_time + word_duration,
+                                start_time=word_start,
+                                end_time=word_end,
                             )
                         )
-                        current_time += word_duration
             else:
                 cleaned = _clean_word(word_text)
+                word_start = current_time
+                word_end = current_time + duration_seconds
+                # Always advance timing
+                current_time += duration_seconds
+                # Only add to result if word has content
                 if cleaned:
                     result.append(
                         WordTiming(
                             word=cleaned,
-                            start_time=current_time,
-                            end_time=current_time + duration_seconds,
+                            start_time=word_start,
+                            end_time=word_end,
                         )
                     )
-                current_time += duration_seconds
         else:
             # Empty text, just advance time
             current_time += duration_seconds
