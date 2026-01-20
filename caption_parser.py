@@ -73,6 +73,23 @@ def _ass_time_to_seconds(ass_time: str) -> float:
     return hours * 3600 + minutes * 60 + seconds + centiseconds / 100.0
 
 
+def _clean_word(word: str) -> str:
+    """
+    Clean a single word by removing stray characters.
+
+    Args:
+        word: The word to clean.
+
+    Returns:
+        Cleaned word.
+    """
+    # Remove leading/trailing slashes and backslashes (common ASS artifacts)
+    word = word.strip("/\\")
+    # Remove any remaining backslashes within the word
+    word = word.replace("\\", "")
+    return word.strip()
+
+
 def _distribute_timing_to_words(
     text: str, start_time: float, end_time: float
 ) -> list[WordTiming]:
@@ -98,9 +115,11 @@ def _distribute_timing_to_words(
 
     result: list[WordTiming] = []
     for i, word in enumerate(words):
-        word_start = start_time + (i * word_duration)
-        word_end = word_start + word_duration
-        result.append(WordTiming(word=word, start_time=word_start, end_time=word_end))
+        cleaned_word = _clean_word(word)
+        if cleaned_word:  # Skip empty words after cleaning
+            word_start = start_time + (i * word_duration)
+            word_end = word_start + word_duration
+            result.append(WordTiming(word=cleaned_word, start_time=word_start, end_time=word_end))
 
     return result
 
@@ -132,6 +151,9 @@ def _parse_karaoke_tags(text: str, start_time: float) -> list[WordTiming] | None
 
     for duration_cs, word_text in matches:
         duration_seconds = int(duration_cs) / 100.0
+        # Clean ASS special characters from word text
+        word_text = re.sub(r"\\[Nnh]", " ", word_text)
+        word_text = word_text.replace("\\", "")
         word_text = word_text.strip()
 
         if word_text:
@@ -141,23 +163,26 @@ def _parse_karaoke_tags(text: str, start_time: float) -> list[WordTiming] | None
                 # Distribute timing across multiple words
                 word_duration = duration_seconds / len(words)
                 for word in words:
-                    if word.strip():
+                    cleaned = _clean_word(word)
+                    if cleaned:
                         result.append(
                             WordTiming(
-                                word=word.strip(),
+                                word=cleaned,
                                 start_time=current_time,
                                 end_time=current_time + word_duration,
                             )
                         )
                         current_time += word_duration
             else:
-                result.append(
-                    WordTiming(
-                        word=word_text,
-                        start_time=current_time,
-                        end_time=current_time + duration_seconds,
+                cleaned = _clean_word(word_text)
+                if cleaned:
+                    result.append(
+                        WordTiming(
+                            word=cleaned,
+                            start_time=current_time,
+                            end_time=current_time + duration_seconds,
+                        )
                     )
-                )
                 current_time += duration_seconds
         else:
             # Empty text, just advance time
@@ -178,6 +203,10 @@ def _clean_ass_text(text: str) -> str:
     """
     # Remove all ASS tags like {\k25}, {\r}, {\an8}, etc.
     clean_text = re.sub(r"\{[^}]*\}", "", text)
+    # Remove ASS line break and special characters: \N, \n, \h
+    clean_text = re.sub(r"\\[Nnh]", " ", clean_text)
+    # Remove any stray backslashes that might remain
+    clean_text = clean_text.replace("\\", "")
     # Clean up multiple spaces
     clean_text = re.sub(r"\s+", " ", clean_text).strip()
     return clean_text
