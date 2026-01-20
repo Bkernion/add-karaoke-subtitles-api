@@ -53,6 +53,35 @@ class VideoResponse(BaseModel):
     download_url: str
     message: str = ""
 
+
+class ArtisticVideoRequest(BaseModel):
+    """Request model for artistic word-by-word video generation.
+
+    Accepts caption files (.ass/.srt) via URL and audio via URL.
+    At least one of audio_url or video_url must be provided.
+    If video_url is provided, audio will be extracted from it.
+    """
+    caption_url: str | None = None  # Optional URL to .ass or .srt caption file
+    audio_url: str | None = None  # Optional URL to audio file (.mp3, .wav)
+    video_url: str | None = None  # Optional URL to video (audio will be extracted)
+    output_format: str = "9:16"  # Output format: "9:16" (portrait), "1:1" (square), "16:9" (landscape)
+    headers: Dict[str, str] | None = None  # Optional headers for fetching URLs
+    base64_urls: bool | None = None  # If true, URLs are base64-encoded
+
+    def model_post_init(self, __context: Any) -> None:
+        """Validate that at least one audio source is provided."""
+        if not self.audio_url and not self.video_url:
+            raise ValueError("At least one of audio_url or video_url must be provided")
+        if self.output_format not in ("9:16", "1:1", "16:9"):
+            raise ValueError("output_format must be one of: 9:16, 1:1, 16:9")
+
+
+class ArtisticVideoResponse(BaseModel):
+    """Response model for artistic video generation."""
+    status: str
+    download_url: str
+    message: str = ""
+
 @app.post("/generate-karaoke-subtitles", response_model=VideoResponse)
 async def generate_karaoke_subtitles(video_request: VideoRequest, request: Request) -> VideoResponse:
     try:
