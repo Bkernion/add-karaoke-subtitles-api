@@ -4,9 +4,9 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any
 
+import gc
 import aiofiles
 import requests
-import whisper
 import ffmpeg
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
@@ -20,13 +20,10 @@ from video_processor import VideoProcessor
 from caption_parser import parse_caption_file
 from style_engine import StyleEngine
 from frame_generator import FrameGenerator, FrameDimensions
-from video_assembler import VideoAssembler, create_frames_with_timing
+from video_assembler import VideoAssembler, create_frames_with_timing, create_frames_with_timing_from_paths
 from font_registry import get_default_registry
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
-
-# Load Whisper model once at startup
-whisper_model = whisper.load_model("base")
 
 PUBLIC_DIR = Path("public")
 PUBLIC_DIR.mkdir(exist_ok=True)
@@ -170,9 +167,9 @@ def sanitize_font_filename(filename: str) -> str:
 async def generate_karaoke_subtitles(video_request: VideoRequest, request: Request) -> VideoResponse:
     try:
         unique_id = str(uuid.uuid4())[:8]
-        
+
         video_processor = VideoProcessor()
-        subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
+        subtitle_generator = KaraokeSubtitleGenerator()
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -192,58 +189,14 @@ async def generate_karaoke_subtitles(video_request: VideoRequest, request: Reque
             
             video_info = video_processor.get_video_info(input_video_path)
             
-            video_processor.extract_audio(input_video_path, audio_path)
-            
-            transcription = subtitle_generator.transcribe_with_timing(audio_path)
-            
-            subtitle_generator.generate_ass_file(
-                transcription, 
-                subtitle_path,
-                font_name=video_request.font_name,
-                font_size=video_request.font_size,
-                font_color=video_request.font_color,
-                highlight_color=video_request.highlight_color,
-                video_width=video_info['width'],
-                video_height=video_info['height'],
-                subtitle_position=video_request.subtitle_position
+            raise HTTPException(
+                status_code=400,
+                detail="Whisper transcription has been removed to reduce memory usage. "
+                       "Please use /generate-with-ass-file or /generate-artistic-video with a caption file instead."
             )
-            
-            video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
-            
-            # Construct full URL - force HTTPS for production
-            if "onrender.com" in str(request.url.netloc):
-                base_url = f"https://{request.url.netloc}"
-            else:
-                base_url = f"{request.url.scheme}://{request.url.netloc}"
-            
-            download_url = f"{base_url}/public/{unique_id}_final.mp4"
-            
-            # Debug logging
-            print(f"🔗 Generated download URL: {download_url}")
-            
-            response_data = {
-                "status": "success",
-                "download_url": download_url,
-                "message": "Karaoke subtitles generated successfully"
-            }
-            
-            # Debug the response
-            print(f"📋 Response data: {response_data}")
-            
-            # Use standard Response to ensure cleanest JSON
-            import json
-            json_string = json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
-            
-            return Response(
-                content=json_string,
-                media_type="application/json",
-                headers={
-                    "Content-Type": "application/json; charset=utf-8",
-                    "Cache-Control": "no-cache",
-                    "Access-Control-Allow-Origin": "*"
-                }
-            )
-            
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
@@ -275,9 +228,9 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
     """Alternative endpoint that returns just the URL as plain text"""
     try:
         unique_id = str(uuid.uuid4())[:8]
-        
+
         video_processor = VideoProcessor()
-        subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
+        subtitle_generator = KaraokeSubtitleGenerator()
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -293,38 +246,14 @@ async def generate_karaoke_subtitles_simple(video_request: VideoRequest, request
                     video_url = base64.b64decode(video_url).decode("utf-8")
                 except Exception:
                     raise HTTPException(status_code=400, detail="Invalid base64 video_url")
-            await video_processor.download_video(str(video_url), input_video_path, extra_headers=video_request.headers)
-            
-            video_info = video_processor.get_video_info(input_video_path)
-            
-            video_processor.extract_audio(input_video_path, audio_path)
-            
-            transcription = subtitle_generator.transcribe_with_timing(audio_path)
-            
-            subtitle_generator.generate_ass_file(
-                transcription, 
-                subtitle_path,
-                font_name=video_request.font_name,
-                font_size=video_request.font_size,
-                font_color=video_request.font_color,
-                highlight_color=video_request.highlight_color,
-                video_width=video_info['width'],
-                video_height=video_info['height'],
-                subtitle_position=video_request.subtitle_position
+            raise HTTPException(
+                status_code=400,
+                detail="Whisper transcription has been removed to reduce memory usage. "
+                       "Please use /generate-with-ass-file or /generate-artistic-video with a caption file instead."
             )
-            
-            video_processor.burn_subtitles(input_video_path, subtitle_path, output_video_path)
-            
-            # Return just the URL as plain text
-            if "onrender.com" in str(request.url.netloc):
-                base_url = f"https://{request.url.netloc}"
-            else:
-                base_url = f"{request.url.scheme}://{request.url.netloc}"
-            
-            download_url = f"{base_url}/public/{unique_id}_final.mp4"
-            
-            return Response(content=download_url, media_type="text/plain")
-            
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
@@ -466,6 +395,8 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
+    finally:
+        gc.collect()
 
 
 async def download_file(url: str, output_path: Path, extra_headers: Dict[str, str] | None = None) -> None:
@@ -529,8 +460,7 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
 
     Accepts caption files (.ass/.srt) via URL and audio via URL.
     If video_url is provided instead of audio_url, audio will be extracted from it.
-    If no caption_url is provided, Whisper will be used to transcribe the audio and
-    extract word-level timing automatically.
+    A caption_url (.ass or .srt) is required for word-level timing.
     """
     try:
         unique_id = str(uuid.uuid4())[:8]
@@ -560,7 +490,12 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
                     detail="At least one of audio_url or video_url must be provided"
                 )
 
-            # Caption is now optional - if not provided, we'll use Whisper transcription
+            # Caption file is required (Whisper removed for memory savings)
+            if not caption_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="caption_url is required. Provide a .ass or .srt caption file URL for word-level timing."
+                )
 
             # Set up paths
             audio_path = temp_path / f"{unique_id}_audio.wav"
@@ -616,35 +551,15 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
                 video_processor.extract_audio(input_video_path, audio_path)
                 print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
 
-            # Get word-level timing - either from caption file or Whisper transcription
-            word_timings: list[dict[str, str | float]] = []
-            if caption_path:
-                # Parse captions to get word-level timing
-                print(f"📝 Parsing captions...")
-                word_timings = parse_caption_file(caption_path)
-                print(f"✅ Parsed {len(word_timings)} words from captions")
-            else:
-                # Use Whisper transcription to get word-level timing
-                print(f"📝 Transcribing audio with Whisper (no caption provided)...")
-                subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
-                transcription = subtitle_generator.transcribe_with_timing(audio_path)
-                print(f"✅ Whisper transcription complete")
-
-                # Extract word-level timing from Whisper result
-                # Whisper returns segments with words containing 'word', 'start', 'end'
-                for segment in transcription.get("segments", []):
-                    for word_info in segment.get("words", []):
-                        word_timings.append({
-                            "word": word_info.get("word", "").strip(),
-                            "start_time": float(word_info.get("start", 0)),
-                            "end_time": float(word_info.get("end", 0))
-                        })
-                print(f"✅ Extracted {len(word_timings)} words from transcription")
+            # Get word-level timing from caption file
+            print(f"📝 Parsing captions...")
+            word_timings = parse_caption_file(caption_path)
+            print(f"✅ Parsed {len(word_timings)} words from captions")
 
             if not word_timings:
                 raise HTTPException(
                     status_code=400,
-                    detail="No words found in caption file or transcription"
+                    detail="No words found in caption file"
                 )
 
             # Extract just the words for style generation (cast to str for type safety)
@@ -656,20 +571,19 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
             styles = style_engine.generate_styles_for_words(words)
             print(f"✅ Styles generated")
 
-            # Generate frames for each word
+            # Generate frames for each word (streamed to disk)
             print(f"🖼️ Generating frames...")
             dimensions = FrameDimensions.from_format_string(video_request.output_format)
             frame_generator = FrameGenerator(default_dimensions=dimensions)
-            images = frame_generator.generate_frames_for_words(words, styles, dimensions)
-            print(f"✅ Generated {len(images)} frames")
+            frame_paths = frame_generator.generate_frames_to_disk(words, styles, temp_path, dimensions)
+            print(f"✅ Generated {len(frame_paths)} frames")
 
             # Create frames with timing for video assembly
-            # Convert to the expected timing format
             timings: list[dict[str, float]] = [
                 {"start_time": float(wt["start_time"]), "end_time": float(wt["end_time"])}
                 for wt in word_timings
             ]
-            frames_with_timing = create_frames_with_timing(images, timings)
+            frames_with_timing = create_frames_with_timing_from_paths(frame_paths, timings)
 
             # Assemble video with audio
             print(f"🎬 Assembling video...")
@@ -704,6 +618,8 @@ async def generate_artistic_video(video_request: ArtisticVideoRequest, request: 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
+    finally:
+        gc.collect()
 
 
 @app.post("/generate-artistic-video-upload", response_model=ArtisticVideoResponse)
@@ -722,8 +638,7 @@ async def generate_artistic_video_upload(
 
     Accepts caption files (.ass/.srt) and audio via file upload.
     If video_file is provided instead of audio_file, audio will be extracted from it.
-    If no caption_file is provided, Whisper will be used to transcribe the audio and
-    extract word-level timing automatically.
+    A caption_file (.ass or .srt) is required for word-level timing.
     """
     try:
         # Validate output format
@@ -740,7 +655,12 @@ async def generate_artistic_video_upload(
                 detail="At least one of audio_file or video_file must be provided"
             )
 
-        # Caption file is now optional - if not provided, we'll use Whisper transcription
+        # Caption file is required (Whisper removed for memory savings)
+        if not caption_file:
+            raise HTTPException(
+                status_code=400,
+                detail="caption_file is required. Provide a .ass or .srt caption file for word-level timing."
+            )
 
         unique_id = str(uuid.uuid4())[:8]
 
@@ -807,35 +727,15 @@ async def generate_artistic_video_upload(
                 video_processor.extract_audio(input_video_path, audio_path)
                 print(f"✅ Audio extracted: {audio_path.stat().st_size} bytes")
 
-            # Get word-level timing - either from caption file or Whisper transcription
-            word_timings: list[dict[str, str | float]] = []
-            if caption_path:
-                # Parse captions to get word-level timing
-                print(f"📝 Parsing captions...")
-                word_timings = parse_caption_file(caption_path)
-                print(f"✅ Parsed {len(word_timings)} words from captions")
-            else:
-                # Use Whisper transcription to get word-level timing
-                print(f"📝 Transcribing audio with Whisper (no caption provided)...")
-                subtitle_generator = KaraokeSubtitleGenerator(whisper_model)
-                transcription = subtitle_generator.transcribe_with_timing(audio_path)
-                print(f"✅ Whisper transcription complete")
-
-                # Extract word-level timing from Whisper result
-                # Whisper returns segments with words containing 'word', 'start', 'end'
-                for segment in transcription.get("segments", []):
-                    for word_info in segment.get("words", []):
-                        word_timings.append({
-                            "word": word_info.get("word", "").strip(),
-                            "start_time": float(word_info.get("start", 0)),
-                            "end_time": float(word_info.get("end", 0))
-                        })
-                print(f"✅ Extracted {len(word_timings)} words from transcription")
+            # Get word-level timing from caption file
+            print(f"📝 Parsing captions...")
+            word_timings = parse_caption_file(caption_path)
+            print(f"✅ Parsed {len(word_timings)} words from captions")
 
             if not word_timings:
                 raise HTTPException(
                     status_code=400,
-                    detail="No words found in caption file or transcription"
+                    detail="No words found in caption file"
                 )
 
             # Extract just the words for style generation (cast to str for type safety)
@@ -847,19 +747,19 @@ async def generate_artistic_video_upload(
             styles = style_engine.generate_styles_for_words(words)
             print(f"✅ Styles generated")
 
-            # Generate frames for each word
+            # Generate frames for each word (streamed to disk)
             print(f"🖼️ Generating frames...")
             dimensions = FrameDimensions.from_format_string(output_format)
             frame_generator = FrameGenerator(default_dimensions=dimensions)
-            images = frame_generator.generate_frames_for_words(words, styles, dimensions)
-            print(f"✅ Generated {len(images)} frames")
+            frame_paths = frame_generator.generate_frames_to_disk(words, styles, temp_path, dimensions)
+            print(f"✅ Generated {len(frame_paths)} frames")
 
             # Create frames with timing for video assembly
             timings: list[dict[str, float]] = [
                 {"start_time": float(wt["start_time"]), "end_time": float(wt["end_time"])}
                 for wt in word_timings
             ]
-            frames_with_timing = create_frames_with_timing(images, timings)
+            frames_with_timing = create_frames_with_timing_from_paths(frame_paths, timings)
 
             # Assemble video with audio
             print(f"🎬 Assembling video...")
@@ -893,6 +793,8 @@ async def generate_artistic_video_upload(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating artistic video: {str(e)}")
+    finally:
+        gc.collect()
 
 
 # Font directory path

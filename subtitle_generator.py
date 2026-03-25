@@ -1,12 +1,10 @@
 import re
-import whisper
 from pathlib import Path
 from typing import List, Dict, Any
 import math
 
 class KaraokeSubtitleGenerator:
-    def __init__(self, model=None):
-        self.model = model
+    def __init__(self):
         self.syllable_patterns = self._create_syllable_patterns()
     
     def _create_syllable_patterns(self) -> List[str]:
@@ -15,14 +13,6 @@ class KaraokeSubtitleGenerator:
             r'[bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ]+',
             r'[aeiouAEIOU]+'
         ]
-    
-    def transcribe_with_timing(self, audio_path: Path) -> Dict[str, Any]:
-        result = self.model.transcribe(
-            str(audio_path),
-            word_timestamps=True,
-            verbose=False
-        )
-        return result
     
     def parse_ass_file(self, ass_path: Path) -> Dict[str, Any]:
         """Parse ASS file and extract timing and text data in Whisper format"""

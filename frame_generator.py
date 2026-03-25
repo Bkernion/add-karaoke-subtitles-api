@@ -8,6 +8,7 @@ the font registry and style engine for artistic video creation.
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -205,38 +206,39 @@ class FrameGenerator:
 
         # Create base image
         image = Image.new("RGB", (dimensions.width, dimensions.height))
+        draw = ImageDraw.Draw(image)
 
         if direction == GradientDirection.VERTICAL:
-            # Gradient from top to bottom
+            # Gradient from top to bottom — one horizontal line per row
             for y in range(dimensions.height):
                 ratio = y / (dimensions.height - 1) if dimensions.height > 1 else 0
                 r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
                 g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
                 b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
-                for x in range(dimensions.width):
-                    image.putpixel((x, y), (r, g, b))
+                draw.line([(0, y), (dimensions.width - 1, y)], fill=(r, g, b))
 
         elif direction == GradientDirection.HORIZONTAL:
-            # Gradient from left to right
+            # Gradient from left to right — one vertical line per column
             for x in range(dimensions.width):
                 ratio = x / (dimensions.width - 1) if dimensions.width > 1 else 0
                 r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
                 g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
                 b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
-                for y in range(dimensions.height):
-                    image.putpixel((x, y), (r, g, b))
+                draw.line([(x, 0), (x, dimensions.height - 1)], fill=(r, g, b))
 
         elif direction == GradientDirection.DIAGONAL:
-            # Diagonal gradient (top-left to bottom-right)
+            # Diagonal gradient — draw anti-diagonal lines for each distance value
             max_distance = dimensions.width + dimensions.height - 2
-            for y in range(dimensions.height):
-                for x in range(dimensions.width):
-                    # Distance from top-left corner
-                    distance = x + y
-                    ratio = distance / max_distance if max_distance > 0 else 0
-                    r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
-                    g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
-                    b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
+            for d in range(max_distance + 1):
+                ratio = d / max_distance if max_distance > 0 else 0
+                r = int(rgb1[0] + (rgb2[0] - rgb1[0]) * ratio)
+                g = int(rgb1[1] + (rgb2[1] - rgb1[1]) * ratio)
+                b = int(rgb1[2] + (rgb2[2] - rgb1[2]) * ratio)
+                # Draw the anti-diagonal line for this distance
+                x_start = max(0, d - (dimensions.height - 1))
+                x_end = min(d, dimensions.width - 1)
+                for x in range(x_start, x_end + 1):
+                    y = d - x
                     image.putpixel((x, y), (r, g, b))
 
         return image
@@ -808,6 +810,43 @@ class FrameGenerator:
             self.generate_frame(word, style, dimensions)
             for word, style in zip(words, styles)
         ]
+
+    def generate_frames_to_disk(
+        self,
+        words: list[str],
+        styles: list[FrameStyle],
+        output_dir: Path,
+        dimensions: FrameDimensions | None = None,
+    ) -> list[Path]:
+        """
+        Generate frames and save each to disk immediately to minimize memory usage.
+
+        Each frame is generated, saved as PNG, then freed from memory before the
+        next frame is generated.
+
+        Args:
+            words: List of words to display.
+            styles: List of FrameStyle objects (must match length of words).
+            output_dir: Directory to save frame PNG files.
+            dimensions: Optional frame dimensions for all frames.
+
+        Returns:
+            List of Path objects pointing to saved PNG files.
+        """
+        if len(words) != len(styles):
+            raise ValueError(
+                f"Number of words ({len(words)}) must match number of styles ({len(styles)})"
+            )
+
+        frame_paths: list[Path] = []
+        for i, (word, style) in enumerate(zip(words, styles)):
+            frame = self.generate_frame(word, style, dimensions)
+            frame_path = output_dir / f"frame_{i:06d}.png"
+            frame.save(str(frame_path), "PNG")
+            frame.close()
+            frame_paths.append(frame_path)
+
+        return frame_paths
 
 
 # Module-level convenience instance

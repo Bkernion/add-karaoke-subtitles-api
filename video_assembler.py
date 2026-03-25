@@ -22,15 +22,14 @@ class FrameWithTiming:
     """
     A frame with its associated timing information.
 
-    Attributes:
-        image: PIL Image object for the frame.
-        start_time: Start time in seconds when frame should appear.
-        end_time: End time in seconds when frame should disappear.
+    Supports either a PIL Image object or a file path to a saved frame.
+    When image_path is set, the image is loaded from disk on demand.
     """
 
-    image: Image.Image
+    image: Image.Image | None
     start_time: float
     end_time: float
+    image_path: Path | None = None
 
     @property
     def duration(self) -> float:
@@ -84,10 +83,14 @@ class VideoAssembler:
         frame_files: list[tuple[str, float]] = []
 
         for i, frame in enumerate(frames_with_timing):
-            # Save frame as PNG for lossless quality
-            frame_path = os.path.join(temp_dir, f"frame_{i:06d}.png")
-            frame.image.save(frame_path, "PNG")
-            frame_files.append((frame_path, frame.duration))
+            if frame.image_path:
+                # Frame already saved to disk — use its path directly
+                frame_files.append((str(frame.image_path), frame.duration))
+            elif frame.image:
+                # Save in-memory frame as PNG
+                frame_path = os.path.join(temp_dir, f"frame_{i:06d}.png")
+                frame.image.save(frame_path, "PNG")
+                frame_files.append((frame_path, frame.duration))
 
         return frame_files
 
@@ -276,4 +279,37 @@ def create_frames_with_timing(
             end_time=timing["end_time"],
         )
         for image, timing in zip(images, timings)
+    ]
+
+
+def create_frames_with_timing_from_paths(
+    frame_paths: list[Path],
+    timings: list[dict[str, float]],
+) -> list[FrameWithTiming]:
+    """
+    Create FrameWithTiming objects from file paths and timings.
+
+    Memory-efficient alternative to create_frames_with_timing — frames stay on
+    disk and are only loaded when FFmpeg needs them.
+
+    Args:
+        frame_paths: List of Path objects pointing to saved frame PNG files.
+        timings: List of dicts with 'start_time' and 'end_time' keys (in seconds).
+
+    Returns:
+        List of FrameWithTiming objects with image_path set (image=None).
+    """
+    if len(frame_paths) != len(timings):
+        raise ValueError(
+            f"Number of frame paths ({len(frame_paths)}) must match number of timings ({len(timings)})"
+        )
+
+    return [
+        FrameWithTiming(
+            image=None,
+            start_time=timing["start_time"],
+            end_time=timing["end_time"],
+            image_path=path,
+        )
+        for path, timing in zip(frame_paths, timings)
     ]
