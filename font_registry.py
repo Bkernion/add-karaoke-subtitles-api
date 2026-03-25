@@ -18,6 +18,12 @@ class FontRegistry:
     font names for use in artistic video generation.
     """
 
+    # Common Linux system font directories
+    SYSTEM_FONT_DIRS = [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+    ]
+
     def __init__(self, fonts_dir: str | Path | None = None) -> None:
         """
         Initialize the FontRegistry.
@@ -38,7 +44,9 @@ class FontRegistry:
 
     def _scan_fonts(self) -> dict[str, Path]:
         """
-        Scan the fonts directory for available TTF files.
+        Scan the bundled fonts directory and system font directories for TTF files.
+
+        Bundled fonts (in fonts/) take priority over system fonts with the same name.
 
         Returns:
             Dictionary mapping font names to their file paths.
@@ -48,15 +56,23 @@ class FontRegistry:
 
         self._font_cache = {}
 
-        if not self.fonts_dir.exists():
-            return self._font_cache
+        # Scan system font directories first (so bundled fonts override them)
+        for sys_dir in self.SYSTEM_FONT_DIRS:
+            sys_path = Path(sys_dir)
+            if sys_path.exists():
+                for file_path in sys_path.rglob("*.ttf"):
+                    font_name = file_path.stem
+                    self._font_cache[font_name] = file_path
+                for file_path in sys_path.rglob("*.otf"):
+                    font_name = file_path.stem
+                    self._font_cache[font_name] = file_path
 
-        # Scan for TTF files
-        for file_path in self.fonts_dir.iterdir():
-            if file_path.suffix.lower() == ".ttf":
-                # Extract font name from filename (remove .ttf extension)
-                font_name = file_path.stem
-                self._font_cache[font_name] = file_path
+        # Scan bundled fonts directory (overrides system fonts with same name)
+        if self.fonts_dir.exists():
+            for file_path in self.fonts_dir.iterdir():
+                if file_path.suffix.lower() in (".ttf", ".otf"):
+                    font_name = file_path.stem
+                    self._font_cache[font_name] = file_path
 
         return self._font_cache
 
