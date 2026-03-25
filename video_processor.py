@@ -79,12 +79,16 @@ class VideoProcessor:
     def burn_subtitles(self, video_path: Path, subtitle_path: Path, output_path: Path) -> None:
         try:
             input_video = ffmpeg.input(str(video_path))
-            
+
+            # Resolve the bundled fonts directory relative to this file,
+            # so ffmpeg can find them regardless of the working directory.
+            fonts_dir = Path(__file__).resolve().parent / "fonts"
+
             # High-quality settings optimized for compatibility
             output = ffmpeg.output(
                 input_video,
                 str(output_path),
-                vf=f"ass={subtitle_path}",
+                vf=f"ass={subtitle_path}:fontsdir={fonts_dir}",
                 vcodec='libx264',          # H.264 codec
                 acodec='aac',              # AAC audio codec
                 crf=28,                    # Balanced quality (lower = better, 28 is good for speed)
