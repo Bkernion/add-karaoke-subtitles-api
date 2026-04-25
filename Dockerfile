@@ -21,11 +21,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Register bundled fonts with fontconfig
+# Register bundled fonts with fontconfig and install the Comic Sans MS ->
+# Comic Neue alias (Comic Sans MS is proprietary and not in slim Debian; the
+# alias lets API requests for "Comic Sans MS" resolve to the bundled Comic
+# Neue instead of silently falling back to an unrelated default sans).
 RUN mkdir -p /etc/fonts/conf.d && \
     echo '<?xml version="1.0"?>' > /etc/fonts/conf.d/99-custom-fonts.conf && \
     echo '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' >> /etc/fonts/conf.d/99-custom-fonts.conf && \
     echo '<fontconfig><dir>/app/fonts</dir></fontconfig>' >> /etc/fonts/conf.d/99-custom-fonts.conf && \
+    cp /app/fonts/99-comic-sans-alias.conf /etc/fonts/conf.d/99-comic-sans-alias.conf && \
     fc-cache -f -v
 
 RUN mkdir -p public
