@@ -146,6 +146,13 @@ class KaraokeSubtitleGenerator:
         Appends each word to the shared word_list so the caller can return a
         flat list alongside the per-segment ones.
         """
+        # Re-attach contractions that HeyGen tokenizes as separate tokens.
+        # Source SRTs contain "Kelli Dayton 's voice" and "did n't exist", which
+        # would otherwise render as two karaoke words with a visible space.
+        clean_text = re.sub(
+            r"(\w)\s+(n't|'s|'re|'ll|'ve|'d|'m)\b", r"\1\2", clean_text
+        )
+
         words = clean_text.split()
         duration = max(end_time - start_time, 1e-3)
 
