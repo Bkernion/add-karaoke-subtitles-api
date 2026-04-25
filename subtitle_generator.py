@@ -14,145 +14,231 @@ class KaraokeSubtitleGenerator:
             r'[aeiouAEIOU]+'
         ]
     
+    # Matches an SRT timestamp line: "00:00:01,840 --> 00:00:03,520"
+    # Tolerant: 1-2 digit hours, comma OR period millisecond separator, 1-3 digit ms.
+    _SRT_TIMESTAMP_RE = re.compile(
+        r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*'
+        r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})'
+    )
+
     def parse_ass_file(self, ass_path: Path) -> Dict[str, Any]:
-        """Parse ASS file and extract timing and text data in Whisper format"""
-        segments = []
-        
-        # First, check if this is actually a text file or binary
+        """Parse a subtitle file (ASS or SRT) into Whisper transcription format.
+
+        Despite the name, this dispatches on the file's actual content — so a
+        .srt payload masquerading as an .ass file (which HeyGen sometimes
+        serves via the same caption_url) is parsed correctly.
+        """
+        # Sniff for binary/video files masquerading as captions
         with open(ass_path, 'rb') as f:
             first_bytes = f.read(20)
-        
+
         print(f"🔍 File magic bytes (first 20): {first_bytes[:20]}")
         print(f"🔍 File magic hex: {first_bytes[:20].hex()}")
-        
-        # Check for common video/binary formats
+
         if b'ftyp' in first_bytes[:20] or b'moov' in first_bytes[:20]:
             raise Exception(
                 "❌ ERROR: The caption_url is pointing to a VIDEO FILE (MP4/MOV), not a subtitle file! "
                 "In your n8n workflow, make sure 'caption_url' uses the SUBTITLE URL from HeyGen, not the video URL. "
                 "HeyGen provides separate URLs for video and captions - you need the caption/subtitle URL."
             )
-        
+
         if first_bytes.startswith(b'RIFF'):
             raise Exception(
                 "❌ ERROR: The caption_url is pointing to a VIDEO FILE (AVI), not a subtitle file! "
                 "Make sure 'caption_url' uses the subtitle URL, not the video URL."
             )
-        
-        # Try multiple encodings to handle different ASS file formats
+
+        # Decode with a fallback chain — caption files come from many sources
         encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
         content = None
         used_encoding = None
-        
         for encoding in encodings:
             try:
                 with open(ass_path, 'r', encoding=encoding) as f:
                     content = f.read()
                 used_encoding = encoding
-                break  # Successfully read, exit loop
+                break
             except (UnicodeDecodeError, LookupError):
-                continue  # Try next encoding
-        
+                continue
         if content is None:
-            # Last resort: read as binary and decode with errors='replace'
             with open(ass_path, 'rb') as f:
                 raw_content = f.read()
             content = raw_content.decode('utf-8', errors='replace')
             used_encoding = 'utf-8 (with error replacement)'
-        
-        print(f"🔤 Successfully read ASS file using {used_encoding} encoding")
-        print(f"📄 ASS file has {len(content)} characters, {len(content.split(chr(10)))} lines")
-        
+
+        # Strip BOM if it survived decoding
+        if content.startswith('\ufeff'):
+            content = content[1:]
+
+        print(f"🔤 Successfully read subtitle file using {used_encoding} encoding")
+        print(f"📄 Subtitle file has {len(content)} characters, {len(content.split(chr(10)))} lines")
+
         # Debug: Show first 20 lines of the file
         lines = content.split('\n')
-        print(f"🔍 First 20 lines of ASS file:")
+        print(f"🔍 First 20 lines of subtitle file:")
         for i, line in enumerate(lines[:20]):
             print(f"   Line {i+1}: {line[:100]}")
-        
-        # Find dialogue lines
-        dialogue_lines = []
-        for line in lines:
-            if line.startswith('Dialogue:'):
-                dialogue_lines.append(line)
-        
+
+        fmt = self._detect_subtitle_format(content)
+        print(f"🔎 Detected subtitle format: {fmt.upper()}")
+
+        if fmt == 'ass':
+            result = self._parse_ass_content(content)
+        elif fmt == 'srt':
+            result = self._parse_srt_content(content)
+        else:
+            raise Exception(
+                "❌ ERROR: Subtitle file is neither ASS nor SRT — could not find any "
+                "'Dialogue:' lines (ASS) or 'HH:MM:SS,mmm --> ...' timestamps (SRT). "
+                f"First 200 chars: {content[:200]!r}"
+            )
+
+        if not result['segments']:
+            raise Exception(
+                f"❌ ERROR: Subtitle file recognized as {fmt.upper()} but parsed 0 segments. "
+                f"File length: {len(content)} chars. First 200 chars: {content[:200]!r}"
+            )
+
+        print(f"✅ Parsed {len(result['segments'])} segments with {len(result['words'])} total words")
+        print(f"   First segment: {result['segments'][0].get('text', '')[:50]}...")
+        print(f"   First segment has {len(result['segments'][0].get('words', []))} words")
+
+        return result
+
+    def _detect_subtitle_format(self, content: str) -> str:
+        """Return 'ass', 'srt', or 'unknown' based on content sniffing."""
+        if 'Dialogue:' in content or '[Script Info]' in content or '[V4+ Styles]' in content:
+            return 'ass'
+        if self._SRT_TIMESTAMP_RE.search(content):
+            return 'srt'
+        return 'unknown'
+
+    def _segment_from_text(self, start_time: float, end_time: float, clean_text: str,
+                           word_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build one Whisper-style segment with evenly-distributed word timings.
+
+        Appends each word to the shared word_list so the caller can return a
+        flat list alongside the per-segment ones.
+        """
+        words = clean_text.split()
+        duration = max(end_time - start_time, 1e-3)
+        word_duration = duration / len(words)
+
+        segment_words = []
+        for i, word in enumerate(words):
+            word_start = start_time + i * word_duration
+            word_end = word_start + word_duration
+            entry = {
+                'word': word,
+                'start': word_start,
+                'end': word_end,
+                'probability': 1.0,  # external transcription is treated as ground truth
+            }
+            segment_words.append(entry)
+            word_list.append(entry)
+
+        return {
+            'start': start_time,
+            'end': end_time,
+            'text': clean_text,
+            'words': segment_words,
+        }
+
+    def _parse_ass_content(self, content: str) -> Dict[str, Any]:
+        segments: List[Dict[str, Any]] = []
+        word_list: List[Dict[str, Any]] = []
+
+        dialogue_lines = [ln for ln in content.split('\n') if ln.startswith('Dialogue:')]
         print(f"💬 Found {len(dialogue_lines)} dialogue lines in ASS file")
-        
-        current_segment = None
-        word_list = []
-        
+
         for line in dialogue_lines:
-            # Parse ASS dialogue line format:
             # Dialogue: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             parts = line.split(',', 9)
             if len(parts) < 10:
                 continue
-                
+
             start_time = self._ass_time_to_seconds(parts[1])
-            end_time = self._ass_time_to_seconds(parts[2]) 
+            end_time = self._ass_time_to_seconds(parts[2])
             text = parts[9].strip()
-            
-            # Comprehensive ASS tag removal - multiple passes to catch all variants
-            clean_text = text
-            # Remove all complete ASS tags like {\k25}, {/k9}, {\r}, etc.
-            clean_text = re.sub(r'\{[^}]*\}', '', clean_text)
-            # Remove any remaining curly brackets with content
-            clean_text = re.sub(r'\{[^}]*', '', clean_text)  # Incomplete opening
-            clean_text = re.sub(r'[^{]*\}', '', clean_text)  # Incomplete closing
-            # Remove standalone curly brackets that might remain
+
+            # Strip ASS override tags ({\k25}, {/k9}, {\r}, partials, stragglers)
+            clean_text = re.sub(r'\{[^}]*\}', '', text)
+            clean_text = re.sub(r'\{[^}]*', '', clean_text)
+            clean_text = re.sub(r'[^{]*\}', '', clean_text)
             clean_text = re.sub(r'[{}]', '', clean_text)
-            # Clean up multiple spaces and strip
             clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-            
-            if clean_text:
-                # Split text into words and estimate timing
-                words = clean_text.split()
-                if words:
-                    duration = end_time - start_time
-                    word_duration = duration / len(words) if len(words) > 0 else duration
-                    
-                    segment_words = []
-                    for i, word in enumerate(words):
-                        word_start = start_time + (i * word_duration)
-                        word_end = word_start + word_duration
-                        
-                        segment_words.append({
-                            'word': word,
-                            'start': word_start,
-                            'end': word_end,
-                            'probability': 1.0  # HeyGen is accurate
-                        })
-                        word_list.append(segment_words[-1])
-                    
-                    segments.append({
-                        'start': start_time,
-                        'end': end_time,
-                        'text': clean_text,
-                        'words': segment_words
-                    })
-        
-        print(f"✅ Parsed {len(segments)} segments with {len(word_list)} total words")
-        if segments:
-            print(f"   First segment: {segments[0].get('text', '')[:50]}...")
-            print(f"   First segment has {len(segments[0].get('words', []))} words")
-        
-        # Return in Whisper transcription format
+            if not clean_text:
+                continue
+
+            segments.append(self._segment_from_text(start_time, end_time, clean_text, word_list))
+
         return {
             'segments': segments,
-            'text': ' '.join([seg['text'] for seg in segments]),
-            'words': word_list
+            'text': ' '.join(s['text'] for s in segments),
+            'words': word_list,
         }
-    
+
+    def _parse_srt_content(self, content: str) -> Dict[str, Any]:
+        segments: List[Dict[str, Any]] = []
+        word_list: List[Dict[str, Any]] = []
+
+        # Normalize line endings, then split into cue blocks on blank lines
+        normalized = content.replace('\r\n', '\n').replace('\r', '\n').strip()
+        blocks = re.split(r'\n\s*\n', normalized)
+        print(f"💬 Found {len(blocks)} SRT blocks")
+
+        for block in blocks:
+            block_lines = [ln for ln in block.split('\n') if ln.strip()]
+            if not block_lines:
+                continue
+
+            # Locate the timestamp line — usually line 0 or 1 (after the cue index)
+            ts_match = None
+            ts_idx = None
+            for i, ln in enumerate(block_lines):
+                m = self._SRT_TIMESTAMP_RE.search(ln)
+                if m:
+                    ts_match = m
+                    ts_idx = i
+                    break
+            if ts_match is None:
+                continue
+
+            start_time = self._srt_time_to_seconds(*ts_match.group(1, 2, 3, 4))
+            end_time = self._srt_time_to_seconds(*ts_match.group(5, 6, 7, 8))
+
+            # Text = everything after the timestamp line, joined into one string
+            raw_text = ' '.join(block_lines[ts_idx + 1:])
+            # Strip simple HTML/SRT inline tags (<i>, <b>, <font color="...">)
+            clean_text = re.sub(r'<[^>]+>', '', raw_text)
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+            if not clean_text:
+                continue
+
+            segments.append(self._segment_from_text(start_time, end_time, clean_text, word_list))
+
+        return {
+            'segments': segments,
+            'text': ' '.join(s['text'] for s in segments),
+            'words': word_list,
+        }
+
     def _ass_time_to_seconds(self, ass_time: str) -> float:
-        """Convert ASS time format (H:MM:SS.CC) to seconds"""
-        # Format: 0:00:01.84
+        """Convert ASS time format (H:MM:SS.CC) to seconds (e.g. '0:00:01.84')."""
         parts = ass_time.split(':')
         hours = int(parts[0])
         minutes = int(parts[1])
         seconds_parts = parts[2].split('.')
         seconds = int(seconds_parts[0])
         centiseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
-        
+
         return hours * 3600 + minutes * 60 + seconds + centiseconds / 100.0
+
+    def _srt_time_to_seconds(self, h: str, m: str, s: str, ms: str) -> float:
+        """Convert SRT timestamp components to seconds. ms is 1-3 digits, scaled to ms."""
+        # Right-pad ms so "5" → 500ms, "84" → 840ms, "840" → 840ms
+        ms_int = int(ms.ljust(3, '0')[:3])
+        return int(h) * 3600 + int(m) * 60 + int(s) + ms_int / 1000.0
     
     def _split_into_syllables(self, word: str) -> List[str]:
         if len(word) <= 2:
