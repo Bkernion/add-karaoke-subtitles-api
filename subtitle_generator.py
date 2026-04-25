@@ -113,25 +113,61 @@ class KaraokeSubtitleGenerator:
             return 'srt'
         return 'unknown'
 
+    def _count_syllables(self, word: str) -> int:
+        """Approximate English syllable count via the vowel-group heuristic.
+
+        Used to weight per-word duration inside a cue so long words
+        ("entire", "underground") get more time than short ones ("the", "a"),
+        which keeps the karaoke highlight from sliding behind speech on long
+        cues. Heuristic is ~80% accurate for English — good enough for
+        timing weights, and infinitely better than equal slices.
+        """
+        cleaned = re.sub(r'[^a-zA-Z]', '', word).lower()
+        if not cleaned:
+            # Numbers, punctuation: estimate by digit count (e.g. "1997" → 4 syllables read aloud)
+            digits = sum(c.isdigit() for c in word)
+            return max(digits, 1)
+        groups = re.findall(r'[aeiouy]+', cleaned)
+        count = len(groups)
+        # Silent trailing 'e' ("rescue" → 2, not 3) — but never drop below 1
+        if cleaned.endswith('e') and count > 1:
+            count -= 1
+        return max(count, 1)
+
     def _segment_from_text(self, start_time: float, end_time: float, clean_text: str,
                            word_list: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Build one Whisper-style segment with evenly-distributed word timings.
+        """Build one Whisper-style segment with syllable-weighted word timings.
+
+        Distributes the cue's duration across words proportional to their
+        syllable count, so the highlight tracks actual speech pace within a
+        cue. The first word still begins at start_time and the last word
+        still ends at end_time, so cue boundaries are preserved exactly.
 
         Appends each word to the shared word_list so the caller can return a
         flat list alongside the per-segment ones.
         """
         words = clean_text.split()
         duration = max(end_time - start_time, 1e-3)
-        word_duration = duration / len(words)
+
+        weights = [self._count_syllables(w) for w in words]
+        total_weight = sum(weights) or len(words)  # safety: never divide by zero
 
         segment_words = []
-        for i, word in enumerate(words):
-            word_start = start_time + i * word_duration
-            word_end = word_start + word_duration
+        elapsed = 0.0
+        for i, (word, weight) in enumerate(zip(words, weights)):
+            if i == len(words) - 1:
+                # Anchor last word's end exactly to cue end so float drift
+                # doesn't push the final highlight past the cue boundary.
+                word_end = duration
+            else:
+                word_end = elapsed + duration * (weight / total_weight)
+            word_start_offset = elapsed
+            elapsed = word_end
+
             entry = {
                 'word': word,
-                'start': word_start,
-                'end': word_end,
+                'start': start_time + word_start_offset,
+                'end': start_time + word_end,
                 'probability': 1.0,  # external transcription is treated as ground truth
             }
             segment_words.append(entry)
