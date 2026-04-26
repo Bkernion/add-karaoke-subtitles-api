@@ -9,6 +9,8 @@ import os
 import random
 from pathlib import Path
 
+from PIL import ImageFont
+
 
 class FontRegistry:
     """
@@ -41,6 +43,11 @@ class FontRegistry:
 
         # Cache for available fonts (font_name -> font_path)
         self._font_cache: dict[str, Path] | None = None
+        # Lowercase alias -> canonical TTF family name, populated for bundled
+        # fonts only. Used by resolve_font_name() so an API caller can pass any
+        # of "ZenDots" / "Zen Dots" / "zendots" and end up with the exact
+        # family string libass needs ("Zen Dots") in the ASS Style line.
+        self._family_aliases: dict[str, str] | None = None
 
     def _scan_fonts(self) -> dict[str, Path]:
         """
@@ -55,8 +62,12 @@ class FontRegistry:
             return self._font_cache
 
         self._font_cache = {}
+        self._family_aliases = {}
 
-        # Scan system font directories first (so bundled fonts override them)
+        # Scan system font directories first (so bundled fonts override them).
+        # No metadata extraction here — would be slow on Linux servers with
+        # thousands of system fonts, and system fonts are resolved by libass
+        # via fontconfig anyway.
         for sys_dir in self.SYSTEM_FONT_DIRS:
             sys_path = Path(sys_dir)
             if sys_path.exists():
@@ -67,12 +78,25 @@ class FontRegistry:
                     font_name = file_path.stem
                     self._font_cache[font_name] = file_path
 
-        # Scan bundled fonts directory (overrides system fonts with same name)
+        # Scan bundled fonts directory (overrides system fonts with same name).
+        # For these we ALSO read the TTF family name and register aliases so
+        # resolve_font_name() can fix the common API gotcha where the filename
+        # ("ZenDots") doesn't match the actual family ("Zen Dots") that libass
+        # needs in the ASS Style line.
         if self.fonts_dir.exists():
             for file_path in self.fonts_dir.iterdir():
-                if file_path.suffix.lower() in (".ttf", ".otf"):
-                    font_name = file_path.stem
-                    self._font_cache[font_name] = file_path
+                if file_path.suffix.lower() not in (".ttf", ".otf"):
+                    continue
+                font_name = file_path.stem
+                self._font_cache[font_name] = file_path
+                try:
+                    family, _style = ImageFont.truetype(str(file_path), 12).getname()
+                except Exception:
+                    family = font_name
+                # Register every reasonable spelling -> canonical family
+                self._family_aliases[font_name.lower()] = family
+                self._family_aliases[family.lower()] = family
+                self._family_aliases[family.replace(" ", "").lower()] = family
 
         return self._font_cache
 
@@ -131,6 +155,25 @@ class FontRegistry:
 
         return random.choice(fonts)
 
+    def resolve_font_name(self, name: str) -> str | None:
+        """
+        Map a user-supplied font name to the canonical TTF family name.
+
+        Accepts filename stems ("ZenDots"), family names ("Zen Dots"), and
+        case/space variants. Returns the exact family-name string libass
+        needs in the ASS Style line, or None when the input doesn't match
+        any bundled font (in which case the caller should pass the input
+        through to fontconfig unchanged so system fonts still work).
+        """
+        self._scan_fonts()
+        if not name:
+            return None
+        normalized = name.strip().lower()
+        if normalized in self._family_aliases:
+            return self._family_aliases[normalized]
+        # Try the space-stripped variant ("Zen Dots" → "zendots")
+        return self._family_aliases.get(normalized.replace(" ", ""))
+
     def refresh(self) -> None:
         """
         Clear the font cache and rescan the fonts directory.
@@ -138,6 +181,7 @@ class FontRegistry:
         Call this method after adding new fonts to pick up changes.
         """
         self._font_cache = None
+        self._family_aliases = None
 
 
 # Module-level singleton for convenience
@@ -201,3 +245,13 @@ def get_random_font() -> str | None:
         A randomly selected font name, or None if no fonts are available.
     """
     return get_default_registry().get_random_font()
+
+
+def resolve_font_name(name: str) -> str | None:
+    """
+    Resolve a user-supplied font name to its canonical family name.
+
+    See FontRegistry.resolve_font_name for details. Returns None when the
+    input doesn't match any bundled font.
+    """
+    return get_default_registry().resolve_font_name(name)

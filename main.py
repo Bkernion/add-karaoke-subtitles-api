@@ -21,7 +21,7 @@ from caption_parser import parse_caption_file
 from style_engine import StyleEngine
 from frame_generator import FrameGenerator, FrameDimensions
 from video_assembler import VideoAssembler, create_frames_with_timing, create_frames_with_timing_from_paths
-from font_registry import get_default_registry
+from font_registry import get_default_registry, resolve_font_name
 
 app = FastAPI(title="Karaoke Subtitle API", version="1.0.0")
 
@@ -362,11 +362,24 @@ async def generate_with_ass_file(video_request: VideoRequestWithASS, request: Re
             print(f"📝 Parsed {len(transcription.get('segments', []))} segments from ASS file")
             print(f"📝 Total text: {transcription.get('text', '')[:100]}...")
 
+            # Resolve font_name -> canonical TTF family name for libass.
+            # Bundled fonts often have a family name with spaces ("Zen Dots")
+            # that doesn't match the filename ("ZenDots"); without this fix
+            # libass silently falls back to a default sans.
+            requested_font = video_request.font_name
+            resolved_font = resolve_font_name(requested_font)
+            font_name_for_ass = resolved_font or requested_font
+            if resolved_font and resolved_font != requested_font:
+                print(f"🔤 Resolved font '{requested_font}' -> '{resolved_font}'")
+            elif not resolved_font:
+                print(f"🔤 Font '{requested_font}' not in bundled set; "
+                      f"passing through to fontconfig")
+
             # Generate new ASS file with custom formatting using HeyGen's timing
             subtitle_generator.generate_ass_file(
                 transcription,
                 custom_subtitle_path,
-                font_name=video_request.font_name,
+                font_name=font_name_for_ass,
                 font_size=video_request.font_size,
                 font_color=video_request.font_color,
                 highlight_color=video_request.highlight_color,
